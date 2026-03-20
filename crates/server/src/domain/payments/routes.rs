@@ -4,13 +4,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 use time::OffsetDateTime;
 
-use crate::{lightning::PaymentStatus, map_error, nostr_extractor::NostrAuth, startup::AppState};
+use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState};
 
 // Get the status of a payment
 pub async fn check_payment_status(
@@ -74,6 +74,21 @@ pub async fn check_payment_status(
                         .await
                     {
                         error!("Failed to update payment status: {}", e);
+                    }
+
+                    // Publish game entry to audit ledger
+                    if let Err(e) = state
+                        .ledger_service
+                        .publish_game_entry(
+                            &user.nostr_pubkey,
+                            &payment_id,
+                            payment.amount_sats,
+                            "", // session_id not available here, that's ok
+                            &OffsetDateTime::now_utc().date().to_string(),
+                        )
+                        .await
+                    {
+                        warn!("Failed to publish game entry to ledger: {}", e);
                     }
 
                     Ok((
@@ -449,6 +464,20 @@ pub async fn claim_prize(
                         user.id, updated_prize.amount_sats
                     );
 
+                    // Publish prize payout to audit ledger
+                    if let Err(e) = state
+                        .ledger_service
+                        .publish_prize_payout(
+                            &user.nostr_pubkey,
+                            &request.date,
+                            updated_prize.amount_sats,
+                            &payment_id,
+                        )
+                        .await
+                    {
+                        warn!("Failed to publish prize payout to ledger: {}", e);
+                    }
+
                     Ok((
                         StatusCode::OK,
                         Json(json!({
@@ -461,7 +490,7 @@ pub async fn claim_prize(
                 }
                 Err(e) => {
                     error!("Failed to update prize status: {}", e);
-                    return Err(map_error(e));
+                    Err(map_error(e))
                 }
             }
         }
@@ -480,11 +509,11 @@ pub async fn claim_prize(
                 );
             }
 
-            return Err((
+            Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to send payment: {}", e),
             )
-                .into_response());
+                .into_response())
         }
     }
 }

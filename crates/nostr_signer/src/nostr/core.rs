@@ -7,7 +7,7 @@ use nostr_sdk::{
 };
 use std::{collections::HashMap, str::FromStr};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct NostrClientCore {
     inner: Option<Client>,
     pub signer: Option<CustomSigner>,
@@ -15,10 +15,7 @@ pub struct NostrClientCore {
 
 impl NostrClientCore {
     pub fn new() -> Self {
-        Self {
-            inner: None,
-            signer: None,
-        }
+        Self::default()
     }
 
     pub async fn initialize(

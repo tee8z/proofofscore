@@ -17,6 +17,7 @@ use serde_json::json;
 use std::str::FromStr;
 use time::OffsetDateTime;
 
+#[allow(dead_code)]
 pub async fn create_auth_event(
     method: &str,
     url: &str,

@@ -1,0 +1,30 @@
+# Astroid Comp - Local Development Configuration
+# Copy to config/local.toml and adjust as needed:
+#   cp config/local.example.toml config/local.toml
+
+[db_settings]
+data_folder = "./data"
+migrations_folder = "./crates/server/migrations"
+
+[api_settings]
+domain = "127.0.0.1"
+port = "8900"
+private_key_file = "./creds/private.key"
+voltage_api_key = ""
+voltage_api_url = "https://voltageapi.com/v1/"
+voltage_org_id = ""
+voltage_env_id = ""
+voltage_wallet_id = ""
+
+[ui_settings]
+remote_url = "http://127.0.0.1:8900"
+ui_dir = "./crates/public_ui"
+
+[ln_settings]
+# Lightning provider: "voltage" or "lnd"
+provider = "voltage"
+
+# LND settings (used when provider = "lnd")
+# lnd_base_url = "https://localhost:8080"
+# lnd_macaroon_path = "./creds/admin.macaroon"
+# lnd_tls_cert_path = "./creds/tls.cert"

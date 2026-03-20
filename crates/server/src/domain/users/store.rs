@@ -39,6 +39,22 @@ impl UserStore {
         Ok(())
     }
 
+    pub async fn find_by_id(&self, id: i64) -> Result<Option<User>, Error> {
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            SELECT id, nostr_pubkey, username, created_at, updated_at
+            FROM users
+            WHERE id = ?
+            "#,
+            id
+        )
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(user)
+    }
+
     pub async fn find_by_pubkey(&self, pubkey: String) -> Result<Option<User>, Error> {
         let user = sqlx::query_as!(
             User,
@@ -84,7 +100,7 @@ impl UserStore {
         payload: crate::domain::users::routes::RegisterPayload,
     ) -> Result<UserInfo, Error> {
         // Check if user already exists
-        if let Some(_) = self.find_by_pubkey(pubkey.clone()).await? {
+        if self.find_by_pubkey(pubkey.clone()).await?.is_some() {
             return Err(Error::InvalidInput(format!(
                 "User already exists with pubkey: {}",
                 pubkey

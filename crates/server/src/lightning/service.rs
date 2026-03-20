@@ -1,4 +1,3 @@
-use ::time::OffsetDateTime;
 use hyper::StatusCode;
 use log::{error, info, warn};
 use reqwest_middleware::ClientWithMiddleware;
@@ -8,7 +7,6 @@ use tokio::time;
 use uuid::Uuid;
 
 use super::models::LightningError;
-use super::models::*;
 
 #[derive(Debug, Clone)]
 pub struct LightningService {
@@ -155,7 +153,7 @@ impl LightningService {
         // Try to get the payment status
         let response = self
             .client
-            .get(&format!(
+            .get(format!(
                 "{}organizations/{}/environments/{}/payments/{}",
                 self.api_url, self.organization_id, self.environment_id, payment_id
             ))
@@ -348,7 +346,7 @@ impl LightningService {
         info!("Payment initiated with id: {}", payment["id"]);
 
         // Wait for payment to complete
-        self.wait_for_payment(&payment["id"].as_str().unwrap_or(&payment_id), 60)
+        self.wait_for_payment(payment["id"].as_str().unwrap_or(&payment_id), 60)
             .await
     }
 }

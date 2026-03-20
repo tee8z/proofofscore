@@ -56,5 +56,12 @@ tokio-util = { version = "0.7.11", features = ["rt"] }
 toml = "0.8.10"
 tower-http = { version = "0.5.2", features = ["cors", "fs"] }
 uuid = { version = "1.4.1", features = ["serde", "v7"] }
+maud = { version = "0.26", features = ["axum"] }
+
+[build-dependencies]
+minify-js = "0.6"
+walkdir = "2.5"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]

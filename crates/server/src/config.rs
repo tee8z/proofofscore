@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use clap::{command, Parser};
+use clap::Parser;
 use fern::colors::{Color, ColoredLevelConfig};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
@@ -23,13 +23,15 @@ pub struct Cli {
     pub level: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Settings {
     pub config: Option<String>,
     pub level: Option<String>,
     pub db_settings: DBSettings,
     pub api_settings: APISettings,
     pub ui_settings: UISettings,
+    #[serde(default)]
+    pub ln_settings: LnSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,18 +92,29 @@ impl Default for APISettings {
     }
 }
 
-impl Default for Settings {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LnSettings {
+    /// Lightning provider: "voltage" or "lnd"
+    pub provider: String,
+    /// LND REST API base URL (used when provider = "lnd")
+    pub lnd_base_url: Option<String>,
+    /// Path to the LND admin macaroon file (used when provider = "lnd")
+    pub lnd_macaroon_path: Option<String>,
+    /// Path to the LND TLS certificate for self-signed certs (used when provider = "lnd")
+    pub lnd_tls_cert_path: Option<String>,
+}
+
+impl Default for LnSettings {
     fn default() -> Self {
-        Self {
-            config: None,
-            level: None,
-            db_settings: DBSettings::default(),
-            api_settings: APISettings::default(),
-            ui_settings: UISettings::default(),
-            //ln_settings: LnSettings::default(), -- TODO
+        LnSettings {
+            provider: "voltage".to_string(),
+            lnd_base_url: None,
+            lnd_macaroon_path: None,
+            lnd_tls_cert_path: None,
         }
     }
 }
+
 
 pub fn get_settings() -> Result<Settings, anyhow::Error> {
     let cli = Cli::parse();
@@ -191,8 +204,7 @@ pub fn setup_logger(level: Option<String>) -> Result<(), fern::InitError> {
 }
 
 pub fn get_log_level(level: Option<String>) -> LevelFilter {
-    if level.is_some() {
-        let level = level.as_ref().unwrap();
+    if let Some(level) = &level {
         match level.as_ref() {
             "trace" => LevelFilter::Trace,
             "debug" => LevelFilter::Debug,

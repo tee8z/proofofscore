@@ -31,11 +31,16 @@ use tower_http::{
     services::{ServeDir, ServeFile},
 };
 
+use nostr_sdk::Keys;
+
 use crate::{
     check_payment_status, check_prize_eligibility, claim_prize, config::Settings,
-    file_utils::create_folder, get_game_config, get_top_scores, get_user_scores, health_check,
-    index_handler, login, register, run_daily_tasks, start_new_session, submit_score, GameStore,
-    LightningService, PaymentStore, UserStore,
+    file_utils::create_folder, game_handler, get_game_config, get_ledger_events,
+    get_ledger_summary, get_server_pubkey, get_top_scores, get_user_scores, health_check,
+    home_handler, index_handler, leaderboard_handler, leaderboard_rows_handler, login,
+    nav_fragment_handler, register, run_daily_tasks, secrets::get_key, start_new_session,
+    submit_score, GameStore, LedgerService, LedgerStore, LightningProvider, LightningService,
+    LndClient, PaymentStore, UserStore,
 };
 pub struct Application {
     server: Serve<
@@ -79,7 +84,12 @@ pub struct AppState {
     pub user_store: UserStore,
     pub game_store: GameStore,
     pub payment_store: PaymentStore,
+    /// Voltage-specific client. Existing route handlers use this directly.
     pub lightning_service: LightningService,
+    /// Unified provider that delegates to Voltage or LND based on config.
+    /// New or migrated route handlers should prefer this field.
+    pub lightning_provider: LightningProvider,
+    pub ledger_service: LedgerService,
 }
 
 pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir<ServeFile>), anyhow::Error> {
@@ -127,6 +137,40 @@ pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir<ServeFile
         config.api_settings.voltage_wallet_id.clone(),
     );
 
+    // Build the unified lightning provider based on config.
+    let lightning_provider = match config.ln_settings.provider.as_str() {
+        "lnd" => {
+            info!("Lightning provider: LND");
+            let lnd_client = LndClient::new(
+                config
+                    .ln_settings
+                    .lnd_base_url
+                    .as_deref()
+                    .unwrap_or("https://localhost:8080"),
+                config
+                    .ln_settings
+                    .lnd_macaroon_path
+                    .as_deref()
+                    .unwrap_or("./creds/admin.macaroon"),
+                config.ln_settings.lnd_tls_cert_path.as_deref(),
+            )?;
+            LightningProvider::Lnd(lnd_client)
+        }
+        _ => {
+            info!("Lightning provider: Voltage");
+            LightningProvider::Voltage(lightning_service.clone())
+        }
+    };
+
+    let secret_key: nostr_sdk::secp256k1::SecretKey =
+        get_key(&config.api_settings.private_key_file)?;
+    let keys = Keys::parse(&hex::encode(secret_key.secret_bytes()))
+        .map_err(|e| anyhow!("Failed to parse server keys: {}", e))?;
+    info!("Server Nostr pubkey: {}", keys.public_key());
+
+    let ledger_store = LedgerStore::new(db_pool.clone());
+    let ledger_service = LedgerService::new(keys, ledger_store);
+
     let app_state = AppState {
         ui_dir: config.ui_settings.ui_dir,
         remote_url: config.ui_settings.remote_url,
@@ -134,6 +178,8 @@ pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir<ServeFile
         game_store: GameStore::new(db_pool.clone()),
         payment_store: PaymentStore::new(db_pool.clone()),
         lightning_service,
+        lightning_provider,
+        ledger_service,
     };
     Ok((app_state, serve_dir))
 }
@@ -194,8 +240,22 @@ pub fn app(app_state: AppState, serve_dir: ServeDir<ServeFile>) -> Router {
         .route("/check", get(check_prize_eligibility))
         .route("/claim", post(claim_prize));
 
+    let ledger_endpoints = Router::new()
+        .route("/events", get(get_ledger_events))
+        .route("/pubkey", get(get_server_pubkey))
+        .route("/summary", get(get_ledger_summary));
+
+    // Serve build.rs output (bundled JS/CSS) from crates/server/static/ directory
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let static_dir = format!("{}/static", manifest_dir);
+    let static_serve = ServeDir::new(&static_dir);
+
     Router::new()
-        .route("/", get(index_handler))
+        .route("/", get(home_handler))
+        .route("/play", get(game_handler))
+        .route("/leaderboard", get(leaderboard_handler))
+        .route("/fragments/leaderboard-rows", get(leaderboard_rows_handler))
+        .route("/fragments/nav", get(nav_fragment_handler))
         .fallback(index_handler)
         //TODO: do a check against the voltage api to make sure that's all okay
         .route("/api/v1/health_check", get(health_check))
@@ -203,9 +263,11 @@ pub fn app(app_state: AppState, serve_dir: ServeDir<ServeFile>) -> Router {
         .nest("/api/v1/game", game_endpoints)
         .nest("/api/v1/payments", payment_endpoints)
         .nest("/api/v1/prizes", prize_endpoints)
+        .nest("/api/v1/ledger", ledger_endpoints)
         .layer(middleware::from_fn(log_request))
         .with_state(Arc::new(app_state))
         .nest_service("/ui", serve_dir.clone())
+        .nest_service("/static", static_serve)
         .layer(cors)
 }
 

@@ -7,6 +7,7 @@ mod nostr_extractor;
 mod routes;
 mod secrets;
 mod startup;
+mod templates;
 
 pub use config::*;
 pub use daily_tasks::*;

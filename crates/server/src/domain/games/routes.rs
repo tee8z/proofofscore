@@ -4,12 +4,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
+use time::OffsetDateTime;
 
-use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState, PaymentStatus};
+use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState};
 
 use super::store::GameConfigResponse;
 
@@ -318,7 +319,7 @@ pub async fn start_new_session(
                     let mut invoice: Option<String> = None;
                     let max_attempts = 10;
 
-                    for attempt in 0..max_attempts {
+                    for _attempt in 0..max_attempts {
                         match state
                             .lightning_service
                             .get_payment_invoice(&payment_id)
@@ -354,7 +355,7 @@ pub async fn start_new_session(
                             {
                                 Ok(payment) => {
                                     // Return payment required response
-                                    return Err((
+                                    Err((
                                         StatusCode::PAYMENT_REQUIRED,
                                         Json(json!({
                                             "payment_required": true,
@@ -364,18 +365,18 @@ pub async fn start_new_session(
                                             "created_at": payment.created_at
                                         })),
                                     )
-                                        .into_response());
+                                        .into_response())
                                 }
-                                Err(e) => return Err(map_error(e)),
+                                Err(e) => Err(map_error(e)),
                             }
                         }
                         None => {
                             error!("Failed to get invoice after {} attempts", max_attempts);
-                            return Err((
+                            Err((
                                 StatusCode::INTERNAL_SERVER_ERROR,
                                 "Failed to generate Lightning invoice. Please try again.",
                             )
-                                .into_response());
+                                .into_response())
                         }
                     }
                 }
@@ -383,7 +384,7 @@ pub async fn start_new_session(
                     info!("Payment {} is still pending", pending_payment.payment_id);
 
                     // Payment still pending
-                    return Err((
+                    Err((
                         StatusCode::PAYMENT_REQUIRED,
                         Json(json!({
                             "payment_required": true,
@@ -393,13 +394,13 @@ pub async fn start_new_session(
                             "created_at": pending_payment.created_at
                         })),
                     )
-                        .into_response());
+                        .into_response())
                 }
             }
         }
         Ok(None) => {
             // Payment not found in Lightning API yet, consider it still pending
-            return Err((
+            Err((
                 StatusCode::PAYMENT_REQUIRED,
                 Json(json!({
                     "payment_required": true,
@@ -410,13 +411,13 @@ pub async fn start_new_session(
                     "message": "Payment processing, please wait"
                 })),
             )
-                .into_response());
+                .into_response())
         }
         Err(e) => {
             error!("Failed to check payment status: {}", e);
 
             // Return the existing invoice in case of error checking status
-            return Err((
+            Err((
                 StatusCode::PAYMENT_REQUIRED,
                 Json(json!({
                     "payment_required": true,
@@ -427,7 +428,7 @@ pub async fn start_new_session(
                     "error": "Could not verify payment status. Please try again."
                 })),
             )
-                .into_response());
+                .into_response())
         }
     }
 }
@@ -472,6 +473,24 @@ pub async fn submit_score(
                 .await
             {
                 Ok(score) => {
+                    // Publish verified score to audit ledger
+                    if let Err(e) = state
+                        .ledger_service
+                        .publish_score_verified(
+                            &user.nostr_pubkey,
+                            &submission.session_id,
+                            "", // seed - will be populated when replay verification is implemented
+                            submission.score,
+                            submission.level,
+                            0, // frames - will be populated when replay verification is implemented
+                            "", // input_hash - will be populated when replay verification is implemented
+                            &OffsetDateTime::now_utc().date().to_string(),
+                        )
+                        .await
+                    {
+                        warn!("Failed to publish score verification to ledger: {}", e);
+                    }
+
                     let response = ScoreResponse {
                         id: score.id,
                         score: score.score,

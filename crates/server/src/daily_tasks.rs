@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error, info, warn};
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use tokio::time as tokio_time;
@@ -69,6 +69,28 @@ pub async fn run_daily_tasks(app_state: Arc<AppState>) {
                                     Ok(_) => {
                                         info!("Recorded daily winner for {}: user_id={}, prize={} sats",
                                               yesterday, scorer.user_id, prize_amount);
+
+                                        // Publish competition result to audit ledger
+                                        if let Ok(Some(winner_user)) =
+                                            app_state.user_store.find_by_id(scorer.user_id).await
+                                        {
+                                            if let Err(e) = app_state
+                                                .ledger_service
+                                                .publish_competition_result(
+                                                    &yesterday,
+                                                    &winner_user.nostr_pubkey,
+                                                    scorer.score,
+                                                    games_count,
+                                                    games_count * 500, // total pool (500 sats per game)
+                                                    prize_amount,
+                                                )
+                                                .await
+                                            {
+                                                warn!("Failed to publish competition result to ledger: {}", e);
+                                            }
+                                        } else {
+                                            warn!("Failed to find user for ledger competition result: user_id={}", scorer.user_id);
+                                        }
                                     }
                                     Err(e) => {
                                         error!("Failed to record daily winner: {}", e);

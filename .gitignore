@@ -1,4 +1,8 @@
 /target
 /data
-/config
+/config/local.toml
 /creds
+/crates/server/static/
+/crates/public_ui/pkg/
+.direnv/
+result
