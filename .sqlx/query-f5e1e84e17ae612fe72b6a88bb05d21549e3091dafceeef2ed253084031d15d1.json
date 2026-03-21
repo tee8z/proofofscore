@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE game_payments\n            SET plays_remaining = plays_remaining - 1, updated_at = ?\n            WHERE id = (\n                SELECT id FROM game_payments\n                WHERE user_id = ? AND status = 'paid' AND plays_remaining > 0\n                ORDER BY paid_at ASC\n                LIMIT 1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f5e1e84e17ae612fe72b6a88bb05d21549e3091dafceeef2ed253084031d15d1"
+}

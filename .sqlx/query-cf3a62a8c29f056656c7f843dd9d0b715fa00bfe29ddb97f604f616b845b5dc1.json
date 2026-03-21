@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT COUNT(*) as count\n            FROM game_payments\n            WHERE status = 'paid' AND paid_at >= ? AND paid_at <= ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "count",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cf3a62a8c29f056656c7f843dd9d0b715fa00bfe29ddb97f604f616b845b5dc1"
+}

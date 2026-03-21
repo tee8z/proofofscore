@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT COALESCE(SUM(plays_remaining), 0) as total\n            FROM game_payments\n            WHERE user_id = ? AND status = 'paid' AND plays_remaining > 0\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "total",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9a816e02b82cad48cdb6844fbbce76fb0ca7d9f2e8c2cd4cd32e8ca3e0e3d60e"
+}

@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT s.id, s.user_id, s.score, s.level, s.play_time, s.created_at, u.username\n            FROM scores s\n            JOIN users u ON s.user_id = u.id\n            ORDER BY s.score DESC\n            LIMIT ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "score",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "level",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "play_time",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "username",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "976e8fc1a2e09b61bac3aee4a352d27fc422361bb6c22b1dd6a46e6b5385dfc4"
+}

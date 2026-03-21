@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE prize_payouts\n            SET status = ?, payment_id = ?, updated_at = ?, paid_at = ?\n            WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "6014513ef1bfd76fc79b20e1bb14c40ede9bef89cfad04dc8f4628041c772294"
+}

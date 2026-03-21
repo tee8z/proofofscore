@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO prize_payouts\n            (user_id, date, score, amount_sats, status, created_at, updated_at)\n            VALUES (?, ?, ?, ?, ?, ?, ?)\n            ON CONFLICT(user_id, date) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "782911aba8adafdb1a9e8437d46b37378da2ff5224dcfdd3c4e9e9094f88fe8d"
+}

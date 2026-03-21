@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO game_payments\n            (user_id, payment_id, invoice, amount_sats, status, created_at, updated_at)\n            VALUES (?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "0b359078d8b0acb1a29281e44c46c05fe8e76072d2deeb78460a6234d999e222"
+}

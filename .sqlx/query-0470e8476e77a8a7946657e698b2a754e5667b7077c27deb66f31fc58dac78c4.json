@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE game_sessions\n            SET last_active = ?, difficulty_factor = ?\n            WHERE session_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "0470e8476e77a8a7946657e698b2a754e5667b7077c27deb66f31fc58dac78c4"
+}

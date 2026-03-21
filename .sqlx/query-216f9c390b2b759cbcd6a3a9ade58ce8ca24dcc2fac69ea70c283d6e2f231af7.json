@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO game_configs (config_id, user_id, version, created_at, expiration_time)\n            VALUES (?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "216f9c390b2b759cbcd6a3a9ade58ce8ca24dcc2fac69ea70c283d6e2f231af7"
+}
