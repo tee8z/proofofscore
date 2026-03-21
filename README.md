@@ -79,21 +79,27 @@ See [docs/deployment.md](docs/deployment.md) for full setup guide.
 ## API
 
 ```
+GET  /api/v1/health_check             Health check
+
 POST /api/v1/users/login              Nostr NIP-98 login
 POST /api/v1/users/register           Register with Nostr key
 POST /api/v1/users/username/register  Register with username + password
 POST /api/v1/users/username/login     Login with username + password
-POST /api/v1/game/session             Create session (402 if unpaid)
+
+POST /api/v1/game/session             Create game session (402 if unpaid)
 GET  /api/v1/game/config              Game config for session
 POST /api/v1/game/score               Submit verified score
 GET  /api/v1/game/scores/top          Top 10 scores
 GET  /api/v1/game/scores/user         User's best scores
 GET  /api/v1/game/competition         Competition window + entry fee
-GET  /api/v1/payments/status/:id      Payment status
+GET  /api/v1/game/replays/top         Top replay data
+
+GET  /api/v1/payments/status/{id}     Payment status
+
 GET  /api/v1/prizes/check             Prize eligibility
 POST /api/v1/prizes/claim             Claim prize with Lightning invoice
+
 GET  /api/v1/ledger/events            Audit events
 GET  /api/v1/ledger/pubkey            Server Nostr pubkey
 GET  /api/v1/ledger/summary           Ledger stats
-GET  /admin                           Admin dashboard (WireGuard only)
 ```
