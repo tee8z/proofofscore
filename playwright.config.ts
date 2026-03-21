@@ -35,8 +35,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command:
-      "just build-wasm && cargo run --bin server -- --config config/test.toml",
+    command: process.env.E2E_SERVER_BIN
+      ? `${process.env.E2E_SERVER_BIN} --config config/test.toml`
+      : "just build-wasm && cargo run --bin server -- --config config/test.toml",
     port: 8901,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
