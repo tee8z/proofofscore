@@ -218,11 +218,7 @@ impl PaymentStore {
     }
 
     /// Set plays_remaining when a payment is confirmed.
-    pub async fn set_plays_remaining(
-        &self,
-        payment_id: &str,
-        plays: i32,
-    ) -> Result<(), Error> {
+    pub async fn set_plays_remaining(&self, payment_id: &str, plays: i32) -> Result<(), Error> {
         let now = OffsetDateTime::now_utc().to_string();
         sqlx::query!(
             r#"

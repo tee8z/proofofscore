@@ -344,10 +344,7 @@ impl LndClient {
     ///
     /// uri:/lnrpc.Lightning/SubscribeInvoices
     pub async fn subscribe_invoices(&self) -> Result<reqwest::Response, LightningError> {
-        let url = format!(
-            "{}/v1/invoices/subscribe?settle_only=true",
-            self.base_url
-        );
+        let url = format!("{}/v1/invoices/subscribe?settle_only=true", self.base_url);
 
         info!("LND: subscribing to invoice updates");
 
@@ -357,7 +354,9 @@ impl LndClient {
             .header("Grpc-Metadata-macaroon", &self.macaroon)
             .send()
             .await
-            .map_err(|e| LightningError::ApiError(format!("LND subscribe_invoices failed: {}", e)))?;
+            .map_err(|e| {
+                LightningError::ApiError(format!("LND subscribe_invoices failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();

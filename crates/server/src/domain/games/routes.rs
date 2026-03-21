@@ -221,8 +221,7 @@ pub async fn start_new_session(
                     pending_payment.payment_id
                 );
 
-                let plays_per_payment =
-                    state.settings.competition_settings.plays_per_payment;
+                let plays_per_payment = state.settings.competition_settings.plays_per_payment;
 
                 if let Err(e) = state
                     .payment_store

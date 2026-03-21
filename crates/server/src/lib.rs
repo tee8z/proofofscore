@@ -1,8 +1,8 @@
 mod config;
 mod daily_tasks;
-mod invoice_watcher;
 mod domain;
 mod file_utils;
+mod invoice_watcher;
 mod lightning;
 mod nostr_extractor;
 mod routes;
@@ -12,8 +12,8 @@ mod templates;
 
 pub use config::*;
 pub use daily_tasks::*;
-pub use invoice_watcher::*;
 pub use domain::*;
+pub use invoice_watcher::*;
 pub use lightning::*;
 pub use routes::*;
 pub use secrets::{get_key, SecretKeyHandler};

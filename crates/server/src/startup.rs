@@ -37,12 +37,11 @@ use crate::{
     check_payment_status, check_prize_eligibility, claim_prize, config::Settings,
     file_utils::create_folder, game_handler, get_competition_info, get_game_config,
     get_ledger_events, get_ledger_summary, get_server_pubkey, get_top_replays, get_top_scores,
-    get_user_scores,
-    health_check, home_handler, index_handler, leaderboard_handler, leaderboard_rows_handler,
-    login, login_username, nav_fragment_handler, register, register_username,
-    routes::admin::admin_dashboard, run_daily_tasks, secrets::get_key, start_new_session,
-    submit_score, GameStore, LedgerService, LedgerStore, LightningProvider, LightningService,
-    LndClient, PaymentStore, UserStore,
+    get_user_scores, health_check, home_handler, index_handler, leaderboard_handler,
+    leaderboard_rows_handler, login, login_username, nav_fragment_handler, register,
+    register_username, routes::admin::admin_dashboard, run_daily_tasks, secrets::get_key,
+    start_new_session, submit_score, GameStore, LedgerService, LedgerStore, LightningProvider,
+    LightningService, LndClient, PaymentStore, UserStore,
 };
 pub struct Application {
     server: Serve<

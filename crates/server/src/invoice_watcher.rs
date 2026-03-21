@@ -84,17 +84,16 @@ struct StreamedInvoice {
 }
 
 async fn handle_invoice_event(json_line: &str, state: &Arc<AppState>) -> Result<(), String> {
-    let invoice: LndInvoiceLookup = if let Ok(streamed) =
-        serde_json::from_str::<StreamedInvoice>(json_line)
-    {
-        streamed
-            .result
-            .ok_or_else(|| "no result in streamed invoice".to_string())?
-    } else if let Ok(inv) = serde_json::from_str::<LndInvoiceLookup>(json_line) {
-        inv
-    } else {
-        return Err(format!("failed to parse invoice event: {}", json_line));
-    };
+    let invoice: LndInvoiceLookup =
+        if let Ok(streamed) = serde_json::from_str::<StreamedInvoice>(json_line) {
+            streamed
+                .result
+                .ok_or_else(|| "no result in streamed invoice".to_string())?
+        } else if let Ok(inv) = serde_json::from_str::<LndInvoiceLookup>(json_line) {
+            inv
+        } else {
+            return Err(format!("failed to parse invoice event: {}", json_line));
+        };
 
     if invoice.state != "SETTLED" {
         return Ok(());
