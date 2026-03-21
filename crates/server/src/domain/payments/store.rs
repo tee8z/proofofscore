@@ -45,6 +45,17 @@ pub struct TopScorer {
     pub username: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserStats {
+    pub total_games_purchased: i64,
+    pub total_spent_sats: i64,
+    pub prizes_won: i64,
+    pub total_earned_sats: i64,
+    pub high_score: i64,
+    pub total_plays: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct PaymentStore {
     db: Pool<Sqlite>,
@@ -502,6 +513,66 @@ impl PaymentStore {
         .await?;
 
         Ok(payout)
+    }
+
+    /// Get aggregate stats for a user's profile.
+    pub async fn get_user_stats(&self, user_id: i64) -> Result<UserStats, Error> {
+        let games_row = sqlx::query!(
+            r#"
+            SELECT
+                COUNT(*) as total_games,
+                COALESCE(SUM(amount_sats), 0) as total_spent
+            FROM game_payments
+            WHERE user_id = ? AND status = 'paid'
+            "#,
+            user_id,
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        let prize_row = sqlx::query!(
+            r#"
+            SELECT
+                COUNT(*) as prizes_won,
+                COALESCE(SUM(amount_sats), 0) as total_earned
+            FROM prize_payouts
+            WHERE user_id = ? AND status = 'paid'
+            "#,
+            user_id,
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        let high_score_row = sqlx::query!(
+            r#"
+            SELECT COALESCE(MAX(score), 0) as high_score
+            FROM scores
+            WHERE user_id = ?
+            "#,
+            user_id,
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        let total_plays_row = sqlx::query!(
+            r#"
+            SELECT COUNT(*) as total_plays
+            FROM scores
+            WHERE user_id = ?
+            "#,
+            user_id,
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(UserStats {
+            total_games_purchased: games_row.total_games,
+            total_spent_sats: games_row.total_spent,
+            prizes_won: prize_row.prizes_won,
+            total_earned_sats: prize_row.total_earned,
+            high_score: high_score_row.high_score,
+            total_plays: total_plays_row.total_plays,
+        })
     }
 
     // Get pending prize for a user

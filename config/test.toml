@@ -25,8 +25,7 @@ provider = "stub"
 
 [competition_settings]
 start_time = "00:00"
-end_time = "23:59"
-check_interval_secs = 86400
+duration_secs = 86400
 entry_fee_sats = 100
 plays_per_payment = 5
 prize_pool_pct = 90

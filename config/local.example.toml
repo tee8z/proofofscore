@@ -33,12 +33,11 @@ lnd_macaroon_path = "/path/to/admin.macaroon"
 # lnd_tls_cert_path = "/path/to/tls.cert"
 
 [competition_settings]
-# Competition window: scores between start_time and end_time count
-# Winner is determined shortly after end_time
+# Competition window: scores within duration_secs after start_time count
+# Winner is determined shortly after the duration expires
 start_time = "00:00"
-end_time = "23:59"
+duration_secs = 86400
 # How often to check if it's time to process winners (in seconds)
-check_interval_secs = 3600
 # Entry fee per game in sats
 entry_fee_sats = 500
 # Percentage of entry fees that go to the prize pool (remainder goes to server)
@@ -50,5 +49,4 @@ allowed_subnets = ["10.100.0.0/24", "127.0.0.1/32", "::1/128"]
 
 # For testing payouts quickly, use a short window:
 # start_time = "22:00"
-# end_time = "22:10"
-# check_interval_secs = 30
+# duration_secs = 600

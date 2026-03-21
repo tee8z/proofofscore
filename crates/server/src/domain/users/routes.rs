@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::Arc};
 
 use super::password::{hash_password, verify_password};
-use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState};
+use crate::{
+    lightning::normalize_lightning_address, map_error, nostr_extractor::NostrAuth,
+    startup::AppState,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterPayload {
@@ -22,6 +25,7 @@ pub struct LoginResponse {
     pub session_id: String,
     pub username: String,
     pub pubkey: String,
+    pub lightning_address: Option<String>,
 }
 
 // --- Extension-based auth (existing) ---
@@ -39,6 +43,7 @@ pub async fn login(
                 session_id: user_info.session_id,
                 username: user_info.username,
                 pubkey: user_info.pubkey,
+                lightning_address: user_info.lightning_address,
             };
             Ok((StatusCode::OK, Json(response)))
         }
@@ -63,6 +68,7 @@ pub async fn register(
                 session_id: user_info.session_id,
                 username: user_info.username,
                 pubkey: user_info.pubkey,
+                lightning_address: user_info.lightning_address,
             };
             Ok((StatusCode::CREATED, Json(response)))
         }
@@ -227,5 +233,94 @@ pub async fn login_username(
             encrypted_nsec,
             nostr_pubkey: user.nostr_pubkey,
         }),
+    ))
+}
+
+// --- Lightning address management ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateLightningAddressPayload {
+    pub lightning_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserProfileResponse {
+    pub username: String,
+    pub pubkey: String,
+    pub lightning_address: Option<String>,
+    pub stats: crate::domain::payments::UserStats,
+}
+
+pub async fn get_user_profile(
+    auth: NostrAuth,
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, Response> {
+    let pubkey = auth.pubkey.to_string();
+
+    let user = match state.user_store.find_by_pubkey(pubkey).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "User not found").into_response()),
+        Err(e) => return Err(map_error(e)),
+    };
+
+    let stats = state
+        .payment_store
+        .get_user_stats(user.id)
+        .await
+        .map_err(map_error)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(UserProfileResponse {
+            username: user.username,
+            pubkey: user.nostr_pubkey,
+            lightning_address: user.lightning_address,
+            stats,
+        }),
+    ))
+}
+
+pub async fn update_lightning_address(
+    auth: NostrAuth,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<UpdateLightningAddressPayload>,
+) -> Result<impl IntoResponse, Response> {
+    let pubkey = auth.pubkey.to_string();
+    info!("Update lightning address for pubkey: {}", pubkey);
+
+    let user = match state.user_store.find_by_pubkey(pubkey).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Err((StatusCode::NOT_FOUND, "User not found").into_response()),
+        Err(e) => return Err(map_error(e)),
+    };
+
+    // Validate the lightning address if provided
+    let normalized = match &payload.lightning_address {
+        Some(addr) if !addr.trim().is_empty() => {
+            let normalized = normalize_lightning_address(addr).map_err(|e| {
+                (StatusCode::BAD_REQUEST, format!("Invalid lightning address: {}", e))
+                    .into_response()
+            })?;
+            Some(normalized)
+        }
+        _ => None,
+    };
+
+    state
+        .user_store
+        .update_lightning_address(user.id, normalized.as_deref())
+        .await
+        .map_err(map_error)?;
+
+    info!(
+        "Lightning address updated for user {}: {:?}",
+        user.id, normalized
+    );
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "lightning_address": normalized,
+        })),
     ))
 }

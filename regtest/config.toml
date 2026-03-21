@@ -1,0 +1,48 @@
+# Proof of Play — regtest configuration
+# Uses local LND node from docker-compose regtest stack.
+# Start the stack first: just regtest-up && just regtest-setup
+
+[db_settings]
+data_folder = "./data"
+migrations_folder = "./crates/server/migrations"
+
+[api_settings]
+domain = "127.0.0.1"
+port = "8900"
+private_key_file = "./creds/private.pem"
+voltage_api_key = ""
+voltage_api_url = "https://voltageapi.com/v1/"
+voltage_org_id = ""
+voltage_env_id = ""
+voltage_wallet_id = ""
+
+[ui_settings]
+remote_url = "http://127.0.0.1:8900"
+ui_dir = "./ui"
+static_dir = "./crates/server/static"
+
+[ln_settings]
+provider = "lnd"
+lnd_base_url = "https://localhost:8081"
+lnd_macaroon_path = "./regtest/creds/admin.macaroon"
+lnd_tls_cert_path = "./regtest/creds/tls.cert"
+
+[competition_settings]
+start_time = "00:00"
+# How long the competition runs after start_time (in seconds).
+# 300 = 5 min, 3600 = 1h, 86400 = 24h
+duration_secs = 300
+entry_fee_sats = 100
+plays_per_payment = 5
+plays_ttl_minutes = 0
+prize_pool_pct = 80
+
+[bot_detection]
+enabled = false
+max_accounts_per_ip_per_hour = 100
+max_sessions_per_ip_per_hour = 100
+min_timing_variance_us2 = 0
+max_mean_offset_us = 1000000
+
+[admin]
+allowed_subnets = ["127.0.0.1/32", "::1/128"]

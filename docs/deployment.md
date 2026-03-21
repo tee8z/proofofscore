@@ -77,8 +77,7 @@ lnd_macaroon_path = "/opt/proofofplay/secrets/admin.macaroon"
 
 [competition_settings]
 start_time = "00:00"
-end_time = "23:59"
-check_interval_secs = 3600
+duration_secs = 86400       # 24 hours
 entry_fee_sats = 1000
 plays_per_payment = 5
 plays_ttl_minutes = 60

@@ -14,6 +14,7 @@ pub struct User {
     pub username: String,
     pub password_hash: Option<String>,
     pub encrypted_nsec: Option<String>,
+    pub lightning_address: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -24,6 +25,7 @@ pub struct UserInfo {
     pub username: String,
     pub pubkey: String,
     pub session_id: String,
+    pub lightning_address: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +47,7 @@ impl UserStore {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, created_at, updated_at
+            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, lightning_address, created_at, updated_at
             FROM users
             WHERE id = ?
             "#,
@@ -61,7 +63,7 @@ impl UserStore {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, created_at, updated_at
+            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, lightning_address, created_at, updated_at
             FROM users
             WHERE nostr_pubkey = ?
             "#,
@@ -77,7 +79,7 @@ impl UserStore {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, created_at, updated_at
+            SELECT id, nostr_pubkey, username, password_hash, encrypted_nsec, lightning_address, created_at, updated_at
             FROM users
             WHERE username = ? AND password_hash IS NOT NULL
             "#,
@@ -120,6 +122,7 @@ impl UserStore {
             username: user.username,
             pubkey,
             session_id,
+            lightning_address: user.lightning_address,
         })
     }
 
@@ -152,6 +155,7 @@ impl UserStore {
             username: user.username,
             pubkey,
             session_id,
+            lightning_address: None,
         })
     }
 
@@ -186,9 +190,30 @@ impl UserStore {
             username,
             password_hash: Some(password_hash),
             encrypted_nsec: Some(encrypted_nsec),
+            lightning_address: None,
             created_at: now.clone(),
             updated_at: now,
         })
+    }
+
+    pub async fn update_lightning_address(
+        &self,
+        user_id: i64,
+        lightning_address: Option<&str>,
+    ) -> Result<(), Error> {
+        let now = OffsetDateTime::now_utc().to_string();
+        sqlx::query!(
+            r#"
+            UPDATE users SET lightning_address = ?, updated_at = ?
+            WHERE id = ?
+            "#,
+            lightning_address,
+            now,
+            user_id,
+        )
+        .execute(&self.db)
+        .await?;
+        Ok(())
     }
 
     async fn create_user(&self, pubkey: String, username: String) -> Result<User, Error> {
@@ -214,6 +239,7 @@ impl UserStore {
             username,
             password_hash: None,
             encrypted_nsec: None,
+            lightning_address: None,
             created_at: now.clone(),
             updated_at: now,
         };

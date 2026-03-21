@@ -71,6 +71,21 @@ class AuthClient {
             usernameRegisterComplete.addEventListener("click", async () => {
                 try {
                     await this.login("username");
+
+                    // Save lightning address if provided during registration
+                    const lnInput = document.getElementById("registerLightningAddress");
+                    if (lnInput && lnInput.value.trim()) {
+                        try {
+                            const apiBase = window.API_BASE || document.body.getAttribute("data-api-base") || "";
+                            await this.post(`${apiBase}/api/v1/users/lightning-address`, {
+                                lightning_address: lnInput.value.trim(),
+                            });
+                            localStorage.setItem("lightningAddress", lnInput.value.trim());
+                        } catch (lnErr) {
+                            console.warn("Failed to save lightning address during registration:", lnErr);
+                        }
+                    }
+
                     this.hideRegisterModal();
                 } catch (error) {
                     console.error("Failed to complete registration login:", error);
@@ -85,6 +100,17 @@ class AuthClient {
                 this.hideRegisterModal();
                 this.showLoginModal();
             });
+        }
+
+        // How to Play modal
+        const howToPlayBtn = document.getElementById("howToPlayBtn");
+        const howToPlayModal = document.getElementById("howToPlayModal");
+        const closeHowToPlay = document.getElementById("closeHowToPlay");
+        if (howToPlayBtn && howToPlayModal) {
+            howToPlayBtn.addEventListener("click", () => howToPlayModal.classList.add("is-active"));
+        }
+        if (closeHowToPlay && howToPlayModal) {
+            closeHowToPlay.addEventListener("click", () => howToPlayModal.classList.remove("is-active"));
         }
 
         // Logout
@@ -339,17 +365,24 @@ class AuthClient {
         const errorElement = document.getElementById("usernameRegisterError");
         if (errorElement) errorElement.textContent = "";
 
+        // Prevent double-submit
+        const btn = document.getElementById("usernameRegisterButton");
+        if (btn && btn.disabled) return;
+        if (btn) btn.disabled = true;
+
         const username = document.getElementById("registerUsernameInput")?.value || "";
         const password = document.getElementById("registerPasswordInput")?.value || "";
         const confirmPassword = document.getElementById("registerPasswordConfirm")?.value || "";
 
         if (!username || !password) {
             if (errorElement) errorElement.textContent = "Please fill in all fields";
+            if (btn) btn.disabled = false;
             return;
         }
 
         if (password !== confirmPassword) {
             if (errorElement) errorElement.textContent = "Passwords do not match";
+            if (btn) btn.disabled = false;
             return;
         }
 
@@ -388,10 +421,15 @@ class AuthClient {
             const recoveryKeyDisplay = document.getElementById("recoveryKeyDisplay");
             if (recoveryKeyDisplay) recoveryKeyDisplay.value = nsec;
 
+            // Clear lightning address field (browser autofill may have put the nsec here)
+            const lnInput = document.getElementById("registerLightningAddress");
+            if (lnInput) lnInput.value = "";
+
             // Step 5: User must confirm they saved recovery key, then click Continue
         } catch (error) {
             console.error("Username registration failed:", error);
             if (errorElement) errorElement.textContent = error.message || "Registration failed";
+            if (btn) btn.disabled = false;
         }
     }
 
@@ -418,6 +456,7 @@ class AuthClient {
         localStorage.removeItem("gameSession");
         localStorage.removeItem("gameUsername");
         localStorage.removeItem("gameSignerType");
+        localStorage.removeItem("lightningAddress");
 
         this.nostrClient = new window.NostrClientWrapper();
         this.sessionId = null;
@@ -488,6 +527,13 @@ class AuthClient {
         localStorage.setItem("gameSession", this.sessionId);
         localStorage.setItem("gameUsername", this.username);
         localStorage.setItem("gameSignerType", signerType || "privatekey");
+
+        // Cache lightning address for payment flow
+        if (data.lightning_address) {
+            localStorage.setItem("lightningAddress", data.lightning_address);
+        } else {
+            localStorage.removeItem("lightningAddress");
+        }
 
         this.updateAuthUI();
 

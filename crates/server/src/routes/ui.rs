@@ -66,6 +66,17 @@ pub async fn leaderboard_handler(
             warn!("Failed to load scores: {}", e);
             vec![]
         });
+
+    // Calculate current prize pool
+    let today = time::OffsetDateTime::now_utc().date().to_string();
+    let comp = &state.settings.competition_settings;
+    let today_games = state
+        .payment_store
+        .count_games_for_date(&today)
+        .await
+        .unwrap_or(0);
+    let prize_pool_sats = today_games * comp.entry_fee_sats * (comp.prize_pool_pct as i64) / 100;
+
     let config = PageConfig {
         title: "Leaderboard",
         api_base: &state.remote_url,
@@ -77,9 +88,9 @@ pub async fn leaderboard_handler(
     };
 
     if headers.contains_key("hx-request") {
-        Html(pages::leaderboard::leaderboard_content(&scores).into_string())
+        Html(pages::leaderboard::leaderboard_content(prize_pool_sats, comp.prize_pool_pct, &scores).into_string())
     } else {
-        Html(pages::leaderboard::leaderboard_page(&config, &scores).into_string())
+        Html(pages::leaderboard::leaderboard_page(&config, prize_pool_sats, &scores).into_string())
     }
 }
 

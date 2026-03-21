@@ -107,6 +107,27 @@ pub fn auth_modals() -> Markup {
                         button id="copyRecoveryKey" class="nes-btn is-warning" style="margin-top: 10px;" {
                             "Copy to clipboard"
                         }
+
+                        // Lightning address suggestion
+                        div class="nes-container is-dark" style="margin-top: 16px;" {
+                            h4 class="nes-text is-success" style="font-size: 0.85em;" {
+                                "Set Up Lightning Address (recommended)"
+                            }
+                            p style="font-size: 0.7em; margin-bottom: 8px;" {
+                                "Add a lightning address so you can receive prize winnings "
+                                "automatically. Works with CashApp ($cashtag), Wallet of Satoshi, "
+                                "Strike, or any lightning wallet."
+                            }
+                            div class="nes-field" {
+                                input type="text" id="registerLightningAddress" class="nes-input"
+                                    placeholder="$cashtag or you@wallet.com"
+                                    autocomplete="off";
+                            }
+                            p style="font-size: 0.65em; margin-top: 4px; opacity: 0.7;" {
+                                "You can always set this later in your Profile"
+                            }
+                        }
+
                         button type="button" id="usernameRegisterComplete" class="nes-btn is-warning" style="margin-top: 15px; width: 100%;" {
                             "I have saved my recovery key"
                         }

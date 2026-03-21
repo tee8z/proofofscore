@@ -28,9 +28,16 @@ async function initApp() {
     const relaysAttr = document.body.getAttribute('data-default-relays') || '';
     window.DEFAULT_RELAYS = relaysAttr ? relaysAttr.split(',').filter(Boolean) : [];
 
-    // Load the bundled app JS
+    // Load the bundled app JS and initialize replay viewer once it's ready
     const script = document.createElement('script');
     script.src = '/static/app.min.js';
+    script.onload = function() {
+        // app.min.js has executed — WASM + DOM are both ready.
+        // Kick off the replay viewer if we're on a page with a replay canvas.
+        if (typeof initReplayViewer === 'function') {
+            initReplayViewer();
+        }
+    };
     document.body.appendChild(script);
 }
 

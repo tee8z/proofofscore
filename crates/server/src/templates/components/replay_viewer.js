@@ -348,20 +348,18 @@ function initReplayButtons() {
     });
 }
 
-// Initialize after WASM is loaded
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initReplayViewer);
-} else {
-    // Small delay to ensure WASM modules are initialized
-    setTimeout(initReplayViewer, 500);
-}
+// Primary initialization is triggered by loader.js after app.min.js loads
+// (see loader.js script.onload). This ensures WASM + DOM are both ready.
 
-// Re-initialize after HTMX page swap
+// Re-initialize after HTMX page swaps (navigating back to home page etc.)
 document.body.addEventListener("htmx:afterSwap", function() {
+    // Short delay to let the new DOM settle
     setTimeout(function() {
-        initReplayViewer();
-        initReplayButtons();
-    }, 500);
+        if (window.GameEngine) {
+            initReplayViewer();
+            initReplayButtons();
+        }
+    }, 100);
 });
 
 // Stop replay when navigating away from home page

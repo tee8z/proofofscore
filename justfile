@@ -160,6 +160,62 @@ nix-check:
     nix flake check
 
 # ============================================
+# Regtest (local Lightning testing)
+# ============================================
+
+# Start the regtest stack (bitcoind + 2 LND nodes + lnaddress server)
+regtest-up:
+    docker compose -f regtest/docker-compose.yml up -d
+    @echo ""
+    @echo "Waiting for health checks... (this takes ~30s)"
+    @echo "Run 'just regtest-setup' once all services are healthy."
+
+# Fund wallets, open channels, export creds, verify LNURL
+regtest-setup:
+    ./regtest/setup.sh
+
+# Run the game server against regtest
+regtest-run *ARGS: build-wasm
+    RUST_LOG=info cargo run --bin server -- -c regtest/config.toml {{ARGS}}
+
+# Run regtest with a short competition window (default 5 minutes)
+regtest-run-quick mins="5": build-wasm
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SECS=$(({{mins}} * 60))
+    NOW=$(date -u +%H:%M)
+    echo "Competition: starts $NOW UTC, duration {{mins}}m (${SECS}s)"
+    sed -e "s/^start_time = .*/start_time = \"$NOW\"/" \
+        -e "s/^duration_secs = .*/duration_secs = $SECS/" \
+        regtest/config.toml > /tmp/regtest-quick.toml
+    RUST_LOG=info cargo run --bin server -- -c /tmp/regtest-quick.toml
+
+# Stop and remove the regtest stack (preserves data volumes)
+regtest-down:
+    docker compose -f regtest/docker-compose.yml down
+
+# Stop and remove everything including data volumes
+regtest-clean:
+    docker compose -f regtest/docker-compose.yml down -v
+    rm -rf regtest/creds
+
+# Show regtest service logs
+regtest-logs *ARGS:
+    docker compose -f regtest/docker-compose.yml logs {{ARGS}}
+
+# Open a shell on lnd1 (server node)
+regtest-lnd1 *ARGS:
+    docker exec -it regtest-lnd1 lncli --network=regtest {{ARGS}}
+
+# Open a shell on lnd2 (player node)
+regtest-lnd2 *ARGS:
+    docker exec -it regtest-lnd2 lncli --network=regtest {{ARGS}}
+
+# Mine a block on regtest (useful for confirming payments)
+regtest-mine blocks="1":
+    docker exec regtest-bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoinpass generatetoaddress {{blocks}} $(docker exec regtest-bitcoind bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoinpass getnewaddress miner)
+
+# ============================================
 # Cleanup
 # ============================================
 

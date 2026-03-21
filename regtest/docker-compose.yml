@@ -1,0 +1,140 @@
+version: "3.8"
+
+# Local regtest environment for end-to-end Lightning testing.
+# Provides: bitcoind, 2 LND nodes, and an lnaddress server.
+#
+# Usage:
+#   just regtest-up      # start the stack
+#   just regtest-setup   # fund wallets, open channels, register lightning addresses
+#   just regtest-down    # tear down
+
+services:
+  # ── Bitcoin Core (regtest) ──────────────────────────────────────────────
+  bitcoind:
+    image: bitcoin/bitcoin:29.2
+    container_name: regtest-bitcoind
+    command:
+      - bitcoind
+      - -regtest
+      - -server=1
+      - -daemon=0
+      - -printtoconsole=1
+      - -rpcuser=bitcoin
+      - -rpcpassword=bitcoinpass
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -rpcport=18443
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -txindex=1
+      - -fallbackfee=0.00001
+      - -wallet=miner
+    ports:
+      - "18443:18443"
+    volumes:
+      - bitcoind-data:/home/bitcoin/.bitcoin
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=bitcoin", "-rpcpassword=bitcoinpass", "getblockchaininfo"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # ── LND Node 1 (server/house node) ─────────────────────────────────────
+  lnd1:
+    image: lightninglabs/lnd:v0.18.5-beta
+    container_name: regtest-lnd1
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command:
+      - lnd
+      - --noseedbackup
+      - --alias=lnd1-server
+      - --listen=0.0.0.0:9735
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextraip=0.0.0.0
+      - --tlsextradomain=lnd1
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind:18443
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoinpass
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --accept-keysend
+      - --accept-amp
+    ports:
+      - "8081:8080"   # REST API
+      - "10009:10009" # gRPC
+    volumes:
+      - lnd1-data:/root/.lnd
+    healthcheck:
+      test: ["CMD", "lncli", "--network=regtest", "getinfo"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # ── LND Node 2 (player node) ───────────────────────────────────────────
+  lnd2:
+    image: lightninglabs/lnd:v0.18.5-beta
+    container_name: regtest-lnd2
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command:
+      - lnd
+      - --noseedbackup
+      - --alias=lnd2-player
+      - --listen=0.0.0.0:9735
+      - --rpclisten=0.0.0.0:10009
+      - --restlisten=0.0.0.0:8080
+      - --tlsextraip=0.0.0.0
+      - --tlsextradomain=lnd2
+      - --bitcoin.active
+      - --bitcoin.regtest
+      - --bitcoin.node=bitcoind
+      - --bitcoind.rpchost=bitcoind:18443
+      - --bitcoind.rpcuser=bitcoin
+      - --bitcoind.rpcpass=bitcoinpass
+      - --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+      - --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+      - --accept-keysend
+      - --accept-amp
+    ports:
+      - "8082:8080"   # REST API
+      - "10010:10009" # gRPC
+    volumes:
+      - lnd2-data:/root/.lnd
+    healthcheck:
+      test: ["CMD", "lncli", "--network=regtest", "getinfo"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # ── Lightning Address Server ────────────────────────────────────────────
+  # Serves .well-known/lnurlp/<user> endpoints backed by lnd2 (player node).
+  # This lets us test the full LNURL-pay flow locally.
+  lnaddress:
+    build:
+      context: ./lnaddress
+    container_name: regtest-lnaddress
+    depends_on:
+      lnd2:
+        condition: service_healthy
+    environment:
+      - LND_REST_URL=https://lnd2:8080
+      - LND_MACAROON_PATH=/lnd/data/chain/bitcoin/regtest/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+      - DOMAIN=localhost:9090
+      - PORT=9090
+    ports:
+      - "9090:9090"
+    volumes:
+      - lnd2-data:/lnd:ro
+
+volumes:
+  bitcoind-data:
+  lnd1-data:
+  lnd2-data:

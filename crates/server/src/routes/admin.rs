@@ -97,9 +97,9 @@ pub async fn admin_dashboard(
     )
     .await;
 
-    // Top scores today
+    // Top scores today — column order must match header: Player, Score, Level, Time, When
     let top_scores = query_rows(&state,
-        &format!("SELECT s.score, s.level, s.play_time, u.username, s.created_at FROM scores s JOIN users u ON s.user_id = u.id WHERE s.created_at >= '{today}' ORDER BY s.score DESC LIMIT 10")
+        &format!("SELECT u.username, s.score, s.level, s.play_time, s.created_at FROM scores s JOIN users u ON s.user_id = u.id WHERE s.created_at >= '{today}' ORDER BY s.score DESC LIMIT 10")
     ).await;
 
     // Recent bot flags
@@ -118,8 +118,10 @@ pub async fn admin_dashboard(
     ).await;
 
     let entry_fee = state.settings.competition_settings.entry_fee_sats;
-    let today_revenue = today_payments * entry_fee;
     let prize_pct = state.settings.competition_settings.prize_pool_pct;
+    let house_pct = 100 - prize_pct as i64;
+    let today_gross = today_payments * entry_fee;
+    let today_revenue = today_gross * house_pct / 100;
 
     let html = format!(
         r#"<!DOCTYPE html>
@@ -154,7 +156,8 @@ th {{ color: #ffaa00; }}
   <div class="card"><div class="value">{today_sessions}</div><div class="label">Today's Sessions</div></div>
   <div class="card"><div class="value">{today_scores}</div><div class="label">Today's Scores</div></div>
   <div class="card"><div class="value">{today_payments}</div><div class="label">Today's Payments</div></div>
-  <div class="card"><div class="value">{today_revenue}</div><div class="label">Today's Revenue (sats)</div></div>
+  <div class="card"><div class="value">{today_gross}</div><div class="label">Today's Gross (sats)</div></div>
+  <div class="card"><div class="value">{today_revenue}</div><div class="label">Today's Revenue (sats, {house_pct}%)</div></div>
   <div class="card"><div class="value">{total_scores}</div><div class="label">All-time Scores</div></div>
   <div class="card"><div class="value">{total_payments}</div><div class="label">All-time Payments</div></div>
   <div class="card"><div class="value">{flagged_scores}</div><div class="label">Flagged Scores</div></div>
@@ -189,7 +192,7 @@ th {{ color: #ffaa00; }}
 <table>
 <tr><td>Entry fee</td><td>{entry_fee} sats</td></tr>
 <tr><td>Prize pool</td><td>{prize_pct}%</td></tr>
-<tr><td>Competition window</td><td>{start} — {end} UTC</td></tr>
+<tr><td>Competition window</td><td>{start} UTC + {duration}</td></tr>
 <tr><td>Bot detection</td><td>{bot_status}</td></tr>
 </table>
 
@@ -202,7 +205,7 @@ th {{ color: #ffaa00; }}
         ips_html = render_rows(&sus_ips),
         payouts_html = render_rows(&recent_payouts),
         start = state.settings.competition_settings.start_time,
-        end = state.settings.competition_settings.end_time,
+        duration = state.settings.competition_settings.duration_display(),
         bot_status = if state.settings.bot_detection.enabled {
             "enabled"
         } else {

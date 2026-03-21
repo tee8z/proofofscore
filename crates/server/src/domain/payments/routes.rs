@@ -10,7 +10,10 @@ use serde_json::json;
 use std::sync::Arc;
 use time::OffsetDateTime;
 
-use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState};
+use crate::{
+    lightning::get_invoice_from_lightning_address, map_error, nostr_extractor::NostrAuth,
+    startup::AppState,
+};
 
 // Get the status of a payment
 pub async fn check_payment_status(
@@ -166,11 +169,12 @@ pub struct DailyWinnerInfo {
 // Structure for claiming a prize
 #[derive(Debug, Deserialize)]
 pub struct ClaimPrizeRequest {
-    pub invoice: String,
+    /// Bolt11 invoice — optional if user has a lightning address set.
+    pub invoice: Option<String>,
     pub date: String,
 }
 
-// Return info about prize eligibility
+// Return info about prize eligibility for the most recently completed competition.
 pub async fn check_prize_eligibility(
     auth: NostrAuth,
     State(state): State<Arc<AppState>>,
@@ -178,25 +182,19 @@ pub async fn check_prize_eligibility(
     let pubkey = auth.pubkey.to_string();
     info!("Checking prize eligibility for user: {}", pubkey);
 
-    // Find user
     let user = match state.user_store.find_by_pubkey(pubkey).await {
         Ok(Some(user)) => user,
         Ok(None) => return Err((StatusCode::UNAUTHORIZED, "User not found").into_response()),
         Err(e) => return Err(map_error(e)),
     };
 
-    // Get yesterday's date in YYYY-MM-DD format for completed day calculation
-    let yesterday = (OffsetDateTime::now_utc() - time::Duration::days(1))
-        .format(&time::format_description::well_known::Iso8601::DEFAULT)
-        .unwrap()
-        .chars()
-        .take(10) // Take just YYYY-MM-DD part
-        .collect::<String>();
+    // The target date is today — the competition window that just closed.
+    let target_date = OffsetDateTime::now_utc().date().to_string();
 
-    // Check if user was a top scorer for yesterday
+    // Check if user was the top scorer
     let was_top_scorer = match state
         .payment_store
-        .check_top_scorer(user.id, &yesterday)
+        .check_top_scorer(user.id, &target_date)
         .await
     {
         Ok(is_top) => is_top,
@@ -211,7 +209,7 @@ pub async fn check_prize_eligibility(
             StatusCode::OK,
             Json(json!({
                 "eligible": false,
-                "message": "You were not the top scorer for yesterday's games"
+                "message": "You were not the top scorer for this competition"
             })),
         ));
     }
@@ -219,7 +217,7 @@ pub async fn check_prize_eligibility(
     // Check if prize was already claimed
     let already_claimed = match state
         .payment_store
-        .check_prize_claimed(user.id, &yesterday)
+        .check_prize_claimed(user.id, &target_date)
         .await
     {
         Ok(claimed) => claimed,
@@ -230,10 +228,9 @@ pub async fn check_prize_eligibility(
     };
 
     if already_claimed {
-        // Check if it was already paid or is pending
         let prize = match state
             .payment_store
-            .get_pending_prize_for_user(user.id, &yesterday)
+            .get_pending_prize_for_user(user.id, &target_date)
             .await
         {
             Ok(Some(prize)) => prize,
@@ -242,7 +239,7 @@ pub async fn check_prize_eligibility(
                     StatusCode::OK,
                     Json(json!({
                         "eligible": false,
-                        "message": "You have already claimed your prize for yesterday"
+                        "message": "Your prize has already been processed"
                     })),
                 ));
             }
@@ -261,12 +258,11 @@ pub async fn check_prize_eligibility(
                 })),
             ));
         } else {
-            // Prize is pending payment
             return Ok((
                 StatusCode::OK,
                 Json(json!({
                     "eligible": true,
-                    "date": yesterday,
+                    "date": target_date,
                     "amount": prize.amount_sats,
                     "message": "You can claim your prize by submitting a Lightning invoice",
                     "status": "pending",
@@ -276,8 +272,8 @@ pub async fn check_prize_eligibility(
         }
     }
 
-    // Calculate prize amount (90% of all entry fees for that day)
-    let total_games = match state.payment_store.count_games_for_date(&yesterday).await {
+    // Calculate prize amount
+    let total_games = match state.payment_store.count_games_for_date(&target_date).await {
         Ok(count) => count,
         Err(e) => {
             error!("Failed to count games: {}", e);
@@ -294,7 +290,7 @@ pub async fn check_prize_eligibility(
             StatusCode::OK,
             Json(json!({
                 "eligible": false,
-                "message": "No prize pool available for yesterday"
+                "message": "No prize pool available for this competition"
             })),
         ));
     }
@@ -304,32 +300,32 @@ pub async fn check_prize_eligibility(
         .payment_store
         .record_daily_winner(
             user.id,
-            &yesterday,
-            0, // We don't have the score here, it will be updated later
+            &target_date,
+            0,
             prize_amount,
         )
         .await
     {
         Ok(_) => (),
         Err(e) => {
-            error!("Failed to record daily winner: {}", e);
-            // Continue anyway, it might already be recorded
+            error!("Failed to record winner: {}", e);
         }
     };
 
-    // Return eligibility info
     Ok((
         StatusCode::OK,
         Json(json!({
             "eligible": true,
-            "date": yesterday,
+            "date": target_date,
             "amount": prize_amount,
             "message": "You can claim your prize by submitting a Lightning invoice"
         })),
     ))
 }
 
-// Claim a prize
+// Claim a prize — manual fallback when auto-payout didn't happen.
+// If user has a lightning address, resolve via LNURL.
+// Otherwise, user must provide a bolt11 invoice.
 pub async fn claim_prize(
     auth: NostrAuth,
     State(state): State<Arc<AppState>>,
@@ -347,11 +343,6 @@ pub async fn claim_prize(
         Ok(None) => return Err((StatusCode::UNAUTHORIZED, "User not found").into_response()),
         Err(e) => return Err(map_error(e)),
     };
-
-    // Validate invoice
-    if !request.invoice.starts_with("lnbc") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid Lightning invoice").into_response());
-    }
 
     // Verify eligibility
     let was_top_scorer = match state
@@ -374,7 +365,7 @@ pub async fn claim_prize(
             .into_response());
     }
 
-    // Get or create the prize record
+    // Get the pending prize record
     let prize = match state
         .payment_store
         .get_pending_prize_for_user(user.id, &request.date)
@@ -382,10 +373,9 @@ pub async fn claim_prize(
     {
         Ok(Some(p)) => p,
         Ok(None) => {
-            // No pending prize found, check if one was already paid
             return Err((
                 StatusCode::NOT_FOUND,
-                "No eligible prize found for this date",
+                "No eligible prize found for this date (may already be paid)",
             )
                 .into_response());
         }
@@ -395,102 +385,112 @@ pub async fn claim_prize(
         }
     };
 
-    // Check if prize has already been paid
     if prize.status == "paid" {
         return Err((StatusCode::FORBIDDEN, "Prize has already been paid").into_response());
     }
 
-    // If prize already has an invoice but no payment yet, update it
-    let updated_prize = if prize.payment_request.is_some() {
-        match state
-            .payment_store
-            .update_prize_with_invoice(user.id, &request.date, &request.invoice)
-            .await
+    // Resolve the bolt11 invoice:
+    // 1. If user provided one explicitly, use it
+    // 2. Else if user has a lightning address, resolve via LNURL
+    // 3. Else error — they need to set one up
+    let invoice = if let Some(ref provided) = request.invoice {
+        if !provided.starts_with("lnbc")
+            && !provided.starts_with("lnbcrt")
+            && !provided.starts_with("lntbs")
+            && !provided.starts_with("lntb")
         {
-            Ok(Some(p)) => p,
-            Ok(None) => {
-                return Err(
-                    (StatusCode::NOT_FOUND, "Failed to update prize with invoice").into_response(),
-                );
-            }
-            Err(e) => {
-                error!("Failed to update prize with invoice: {}", e);
-                return Err(map_error(e));
-            }
+            return Err((StatusCode::BAD_REQUEST, "Invalid Lightning invoice").into_response());
         }
-    } else {
-        // First time adding an invoice
-        match state
-            .payment_store
-            .update_prize_with_invoice(user.id, &request.date, &request.invoice)
+        provided.clone()
+    } else if let Some(ref ln_addr) = user.lightning_address {
+        let http_client = crate::startup::build_reqwest_client();
+        get_invoice_from_lightning_address(&http_client, ln_addr, prize.amount_sats)
             .await
-        {
-            Ok(Some(p)) => p,
-            Ok(None) => {
-                return Err(
-                    (StatusCode::NOT_FOUND, "Failed to update prize with invoice").into_response(),
-                );
-            }
-            Err(e) => {
-                error!("Failed to update prize with invoice: {}", e);
-                return Err(map_error(e));
-            }
+            .map_err(|e| {
+                error!("LNURL resolution failed for {}: {}", ln_addr, e);
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!(
+                        "Failed to resolve lightning address '{}': {}. \
+                         You can provide a bolt11 invoice directly instead.",
+                        ln_addr, e
+                    ),
+                )
+                    .into_response()
+            })?
+    } else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No invoice provided and no lightning address on profile. \
+             Set a lightning address in your profile or provide a bolt11 invoice.",
+        )
+            .into_response());
+    };
+
+    // Store the invoice on the prize
+    let updated_prize = match state
+        .payment_store
+        .update_prize_with_invoice(user.id, &request.date, &invoice)
+        .await
+    {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return Err(
+                (StatusCode::NOT_FOUND, "Failed to update prize with invoice").into_response(),
+            );
+        }
+        Err(e) => {
+            error!("Failed to update prize with invoice: {}", e);
+            return Err(map_error(e));
         }
     };
 
-    // Process payment
+    // Send the payment
     match state
         .lightning_provider
-        .send_payment(&request.invoice, updated_prize.amount_sats)
+        .send_payment(&invoice, updated_prize.amount_sats)
         .await
     {
         Ok(payment_id) => {
-            // Update the prize record
-            match state
+            if let Err(e) = state
                 .payment_store
                 .update_prize_status(updated_prize.id, "paid", Some(&payment_id))
                 .await
             {
-                Ok(_) => {
-                    info!(
-                        "Prize payment successful for user_id: {}, amount: {}",
-                        user.id, updated_prize.amount_sats
-                    );
-
-                    // Publish prize payout to audit ledger
-                    if let Err(e) = state
-                        .ledger_service
-                        .publish_prize_payout(
-                            &user.nostr_pubkey,
-                            &request.date,
-                            updated_prize.amount_sats,
-                            &payment_id,
-                        )
-                        .await
-                    {
-                        warn!("Failed to publish prize payout to ledger: {}", e);
-                    }
-
-                    Ok((
-                        StatusCode::OK,
-                        Json(json!({
-                            "success": true,
-                            "message": "Prize payment sent successfully",
-                            "payment_id": payment_id,
-                            "amount": updated_prize.amount_sats
-                        })),
-                    ))
-                }
-                Err(e) => {
-                    error!("Failed to update prize status: {}", e);
-                    Err(map_error(e))
-                }
+                error!("Failed to update prize status: {}", e);
             }
+
+            info!(
+                "Prize payment successful for user_id: {}, amount: {}",
+                user.id, updated_prize.amount_sats
+            );
+
+            if let Err(e) = state
+                .ledger_service
+                .publish_prize_payout(
+                    &user.nostr_pubkey,
+                    &request.date,
+                    updated_prize.amount_sats,
+                    &payment_id,
+                )
+                .await
+            {
+                warn!("Failed to publish prize payout to ledger: {}", e);
+            }
+
+            Ok((
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "message": "Prize payment sent successfully",
+                    "payment_id": payment_id,
+                    "amount": updated_prize.amount_sats
+                })),
+            ))
         }
         Err(e) => {
             error!("Failed to send prize payment: {}", e);
 
-            // Update the prize status to reflect the payment failure
             if let Err(update_err) = state
                 .payment_store
                 .update_prize_status(updated_prize.id, "failed", None)

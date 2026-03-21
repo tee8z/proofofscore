@@ -292,7 +292,8 @@ pub async fn start_new_session(
                         "invoice": pending_payment.invoice,
                         "payment_id": pending_payment.payment_id,
                         "amount_sats": pending_payment.amount_sats,
-                        "created_at": pending_payment.created_at
+                        "created_at": pending_payment.created_at,
+                        "lightning_address": user.lightning_address
                     })),
                 )
                     .into_response())
@@ -309,6 +310,7 @@ pub async fn start_new_session(
                     "payment_id": pending_payment.payment_id,
                     "amount_sats": pending_payment.amount_sats,
                     "created_at": pending_payment.created_at,
+                    "lightning_address": user.lightning_address,
                     "error": "Could not verify payment status. Please try again."
                 })),
             )
@@ -318,6 +320,7 @@ pub async fn start_new_session(
 }
 
 /// Helper: create a Lightning invoice and return a 402 Payment Required response.
+/// Includes user's lightning address info so the frontend can show wallet deep-links.
 async fn create_and_return_invoice(
     state: &Arc<AppState>,
     user_id: i64,
@@ -380,6 +383,15 @@ async fn create_and_return_invoice(
         .await
         .map_err(map_error)?;
 
+    // Look up user's lightning address for frontend payment UX
+    let lightning_address = state
+        .user_store
+        .find_by_id(user_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|u| u.lightning_address);
+
     Err((
         StatusCode::PAYMENT_REQUIRED,
         Json(json!({
@@ -387,7 +399,8 @@ async fn create_and_return_invoice(
             "invoice": payment.invoice,
             "payment_id": payment.payment_id,
             "amount_sats": payment.amount_sats,
-            "created_at": payment.created_at
+            "created_at": payment.created_at,
+            "lightning_address": lightning_address
         })),
     )
         .into_response())
@@ -734,14 +747,17 @@ pub async fn get_replay_by_score(
     }
 }
 
-// Get competition info (completion time, entry fee, prize split) for countdown display
+// Get competition info (window, entry fee, prize split) for countdown display
 pub async fn get_competition_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let comp = &state.settings.competition_settings;
+    let (end_h, end_m) = comp.end_hour_minute();
     (
         StatusCode::OK,
         Json(json!({
             "start_time": comp.start_time,
-            "end_time": comp.end_time,
+            "duration_secs": comp.duration_secs,
+            "duration_display": comp.duration_display(),
+            "end_time": format!("{:02}:{:02}", end_h, end_m),
             "entry_fee_sats": comp.entry_fee_sats,
             "plays_per_payment": comp.plays_per_payment,
             "prize_pool_pct": comp.prize_pool_pct,

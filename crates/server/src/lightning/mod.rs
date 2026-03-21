@@ -1,8 +1,12 @@
 pub mod lnd;
+pub mod lnurl;
 mod models;
 mod service;
 
 pub use lnd::{base64_to_hex, LndClient, LndInvoiceLookup, LndInvoiceResponse, LndPaymentResponse};
+pub use lnurl::{
+    get_invoice_from_lightning_address, is_cashapp_address, normalize_lightning_address,
+};
 pub use models::*;
 pub use service::*;
 

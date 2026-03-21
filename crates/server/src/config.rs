@@ -145,11 +145,9 @@ impl Default for LnSettings {
 pub struct CompetitionSettings {
     /// When the competition window opens (HH:MM in UTC, e.g. "00:00")
     pub start_time: String,
-    /// When the competition window closes and winner is determined (HH:MM in UTC, e.g. "23:59")
-    /// Only scores submitted between start_time and end_time count.
-    pub end_time: String,
-    /// How often to check if it's time to process winners (in seconds)
-    pub check_interval_secs: u64,
+    /// How long the competition runs after start_time.
+    /// Format: seconds (u64). e.g. 86400 = 24h, 3600 = 1h, 300 = 5min.
+    pub duration_secs: u64,
     /// Entry fee in sats
     pub entry_fee_sats: i64,
     /// Number of game sessions granted per payment
@@ -175,8 +173,30 @@ impl CompetitionSettings {
         Self::parse_time(&self.start_time)
     }
 
+    /// Compute the end (hour, minute) by adding duration_secs to start_time.
     pub fn end_hour_minute(&self) -> (u8, u8) {
-        Self::parse_time(&self.end_time)
+        let (sh, sm) = self.start_hour_minute();
+        let start_mins = sh as u64 * 60 + sm as u64;
+        let end_mins = (start_mins + self.duration_secs / 60) % (24 * 60);
+        ((end_mins / 60) as u8, (end_mins % 60) as u8)
+    }
+
+    /// Human-readable duration string (e.g. "24h", "1h30m", "5m")
+    pub fn duration_display(&self) -> String {
+        let hours = self.duration_secs / 3600;
+        let mins = (self.duration_secs % 3600) / 60;
+        let secs = self.duration_secs % 60;
+        if hours > 0 && mins > 0 {
+            format!("{}h{}m", hours, mins)
+        } else if hours > 0 {
+            format!("{}h", hours)
+        } else if mins > 0 && secs > 0 {
+            format!("{}m{}s", mins, secs)
+        } else if mins > 0 {
+            format!("{}m", mins)
+        } else {
+            format!("{}s", secs)
+        }
     }
 }
 
@@ -192,8 +212,7 @@ impl Default for CompetitionSettings {
     fn default() -> Self {
         CompetitionSettings {
             start_time: "00:00".to_string(),
-            end_time: "23:59".to_string(),
-            check_interval_secs: 3600,
+            duration_secs: 86400, // 24 hours
             entry_fee_sats: 1000,
             plays_per_payment: 5,
             plays_ttl_minutes: 60,

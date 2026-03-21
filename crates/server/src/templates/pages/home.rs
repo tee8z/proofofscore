@@ -11,32 +11,16 @@ pub fn home_content(entry_fee_sats: i64, plays_per_payment: i32, plays_ttl_minut
     html! {
         div id="welcome-screen" class="nes-container is-dark" {
             h1 class="nes-text is-primary" { "Proof of Play" }
-            p class="nes-text" { "Welcome to Proof of Play!" }
-            p class="nes-text is-success" style="font-size: 0.7em; margin-top: 8px;" {
+            p class="nes-text is-success" style="font-size: 0.7em; margin-top: 4px;" {
                 (entry_fee_sats) " sats = " (plays_per_payment) " plays"
                 @if plays_ttl_minutes > 0 {
                     " (" (plays_ttl_minutes) " min window)"
                 }
-            }
-            p class="nes-text is-warning" style="font-size: 0.7em; margin-top: 4px;" {
-                (prize_pool_pct) "% of each entry goes to the prize pool!"
-            }
-
-            div style="margin-top: 12px; font-size: 0.65em;" {
-                p class="nes-text" { "HOW IT WORKS" }
-                p { "1. Pay entry fee for " (plays_per_payment) " plays" }
-                p { "2. Compete for the daily high score" }
-                p { "3. Top scorer wins the prize pool!" }
-                p style="margin-top: 8px;" {
-                    a href="https://github.com/tee8z/proofofplay" target="_blank" class="nes-text is-primary" style="font-size: 0.9em;" {
-                        "GitHub"
-                    }
-                    " — source code, docs & bug reports"
-                }
+                " — " (prize_pool_pct) "% goes to the prize pool!"
             }
 
             // Replay viewer
-            div class="replay-container" style="margin-top: 20px;" {
+            div class="replay-container" style="margin-top: 16px;" {
                 p id="replayLabel" class="nes-text is-primary" style="display: none; font-size: 0.7em; margin-bottom: 8px;" {}
                 canvas id="replayCanvas" width="800" height="600" style="display: none; width: 100%; max-width: 800px; border: 2px solid #333;" {}
             }

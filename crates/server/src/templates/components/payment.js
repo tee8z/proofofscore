@@ -87,22 +87,39 @@ class PaymentHandler {
         if (this.qrContainer) this.qrContainer.innerHTML = "";
         if (this.paymentRequest) this.paymentRequest.value = paymentData.invoice;
 
-        // Create Bitcoin QR code element — size based on viewport
-        const qrSize = Math.min(250, window.innerWidth - 100);
-        const qrElement = document.createElement("bitcoin-qr");
-        qrElement.setAttribute("lightning", paymentData.invoice);
-        qrElement.setAttribute("width", qrSize);
-        qrElement.setAttribute("height", qrSize);
-        qrElement.setAttribute("dots-type", "rounded");
-        qrElement.setAttribute("corners-square-type", "extra-rounded");
-        qrElement.setAttribute("background-color", "#ffffff");
-        qrElement.setAttribute("dots-color", "#000000");
-        if (this.qrContainer) this.qrContainer.appendChild(qrElement);
+        const amount = paymentData.amount_sats || 500;
+        const plays = document.body.getAttribute("data-plays-per-payment") || "5";
+
+        // Build QR code
+        if (this.qrContainer) {
+            const qrSize = Math.min(250, window.innerWidth - 100);
+            const qrElement = document.createElement("bitcoin-qr");
+            qrElement.setAttribute("lightning", paymentData.invoice);
+            qrElement.setAttribute("width", qrSize);
+            qrElement.setAttribute("height", qrSize);
+            qrElement.setAttribute("dots-type", "rounded");
+            qrElement.setAttribute("corners-square-type", "extra-rounded");
+            qrElement.setAttribute("background-color", "#ffffff");
+            qrElement.setAttribute("dots-color", "#000000");
+            this.qrContainer.appendChild(qrElement);
+        }
 
         if (this.paymentStatus) {
-            const amount = paymentData.amount_sats || 500;
-            const plays = document.body.getAttribute("data-plays-per-payment") || "5";
-            this.paymentStatus.innerHTML = `<p>Waiting for payment...</p><p class="nes-text is-primary">Amount: ${amount} sats</p><p class="nes-text is-success">You'll get ${plays} plays!</p>`;
+            const lnAddr = paymentData.lightning_address || localStorage.getItem("lightningAddress") || "";
+            let statusHtml = `<p>Waiting for payment...</p><p class="nes-text is-primary">Amount: ${amount} sats</p><p class="nes-text is-success">You'll get ${plays} plays!</p>`;
+            if (!lnAddr) {
+                statusHtml += `<p class="nes-text is-warning" style="font-size: 0.7em; margin-top: 8px;">Tip: Set a lightning address in your Profile for a smoother payment experience!</p>`;
+            }
+            this.paymentStatus.innerHTML = statusHtml;
+        }
+
+        // Auto-open lightning: URI to trigger the user's wallet app.
+        // This is a no-op on desktop browsers without a handler, which is fine —
+        // they'll use the QR code or copy the invoice instead.
+        try {
+            window.location.assign("lightning:" + paymentData.invoice);
+        } catch (e) {
+            // Silently ignore — not all browsers support lightning: URIs
         }
 
         if (this.paymentModal) this.paymentModal.style.display = "block";
