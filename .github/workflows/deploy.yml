@@ -158,9 +158,17 @@ jobs:
 
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
 
-          sleep 3
-          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl is-active proofofplay"
-          echo "Service is running!"
+          for i in $(seq 1 10); do
+            status=$($SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl is-active proofofplay" 2>&1) || true
+            if [ "$status" = "active" ]; then
+              echo "Service is running!"
+              exit 0
+            fi
+            echo "Attempt $i: service status is '$status', retrying in 5s..."
+            sleep 5
+          done
+          echo "Service failed to become active after 50s (last status: $status)"
+          exit 1
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
