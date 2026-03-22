@@ -24,13 +24,15 @@ fn main() {
 
     let _ = fs::create_dir_all(&output);
 
-    build_js(&templates, &output);
-    build_css(&templates, &output);
+    let js_hash = build_js(&templates, &output);
+    let css_hash = build_css(&templates, &output);
     copy_loader(&templates, &output);
     copy_static_assets(&templates, &output);
+    build_sw(&templates, &output, &js_hash, &css_hash);
+    emit_asset_hashes(&js_hash, &css_hash);
 }
 
-fn build_js(templates: &Path, output: &Path) {
+fn build_js(templates: &Path, output: &Path) -> String {
     let mut files: Vec<_> = WalkDir::new(templates)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -42,7 +44,7 @@ fn build_js(templates: &Path, output: &Path) {
     files.sort();
 
     if files.is_empty() {
-        return;
+        return String::new();
     }
 
     let mut combined = String::new();
@@ -56,15 +58,15 @@ fn build_js(templates: &Path, output: &Path) {
     }
 
     if combined.is_empty() {
-        return;
+        return String::new();
     }
 
     let minified = try_minify_js(&combined).unwrap_or_else(|| combined.clone());
     let hash = hex::encode(Sha256::digest(minified.as_bytes()));
-    let short = &hash[..8];
+    let short = hash[..8].to_string();
 
     // Clean up old hash files before writing new ones
-    clean_old_hash_files(output, "app.", ".min.js", short);
+    clean_old_hash_files(output, "app.", ".min.js", &short);
 
     let _ = fs::write(output.join(format!("app.{}.min.js", short)), &minified);
     let _ = fs::write(output.join("app.min.js"), &minified);
@@ -74,9 +76,10 @@ fn build_js(templates: &Path, output: &Path) {
     }
 
     println!("cargo:warning=Built app.min.js ({} bytes)", minified.len());
+    short
 }
 
-fn build_css(templates: &Path, output: &Path) {
+fn build_css(templates: &Path, output: &Path) -> String {
     let mut combined = String::new();
 
     // Base styles first
@@ -111,15 +114,15 @@ fn build_css(templates: &Path, output: &Path) {
     }
 
     if combined.trim().is_empty() {
-        return;
+        return String::new();
     }
 
     let minified = minify_css(&combined);
     let hash = hex::encode(Sha256::digest(minified.as_bytes()));
-    let short = &hash[..8];
+    let short = hash[..8].to_string();
 
     // Clean up old hash files before writing new ones
-    clean_old_hash_files(output, "styles.", ".min.css", short);
+    clean_old_hash_files(output, "styles.", ".min.css", &short);
 
     let _ = fs::write(output.join(format!("styles.{}.min.css", short)), &minified);
     let _ = fs::write(output.join("styles.min.css"), &minified);
@@ -128,6 +131,7 @@ fn build_css(templates: &Path, output: &Path) {
         "cargo:warning=Built styles.min.css ({} bytes)",
         minified.len()
     );
+    short
 }
 
 fn try_minify_js(source: &str) -> Option<String> {
@@ -208,7 +212,8 @@ fn copy_loader(templates: &Path, output: &Path) {
     }
 }
 
-/// Copies static assets (SVG, images, etc.) from templates/static to output
+/// Copies static assets (SVG, images, etc.) from templates/static to output,
+/// preserving subdirectory structure.
 fn copy_static_assets(templates: &Path, output: &Path) {
     let static_dir = templates.join("static");
     if !static_dir.exists() {
@@ -223,18 +228,81 @@ fn copy_static_assets(templates: &Path, output: &Path) {
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
+        // Skip sw.js — it's processed separately by build_sw()
+        if path.file_name().is_some_and(|n| n == "sw.js") {
+            continue;
+        }
         println!("cargo:rerun-if-changed={}", path.display());
 
-        if let Some(filename) = path.file_name() {
-            if let Ok(content) = fs::read(path) {
-                let dest = output.join(filename);
-                let _ = fs::write(&dest, &content);
-                println!(
-                    "cargo:warning=Copied {} ({} bytes)",
-                    filename.to_string_lossy(),
-                    content.len()
-                );
+        if let Ok(content) = fs::read(path) {
+            // Preserve subdirectory structure relative to templates/static/
+            let rel = path.strip_prefix(&static_dir).unwrap_or(path);
+            let dest = output.join(rel);
+            if let Some(parent) = dest.parent() {
+                let _ = fs::create_dir_all(parent);
             }
+            let _ = fs::write(&dest, &content);
+            println!(
+                "cargo:warning=Copied {} ({} bytes)",
+                rel.display(),
+                content.len()
+            );
         }
     }
+}
+
+/// Build sw.js with hashed asset paths and cache version baked in.
+fn build_sw(templates: &Path, output: &Path, js_hash: &str, css_hash: &str) {
+    let sw_src = templates.join("static/sw.js");
+    if !sw_src.exists() {
+        return;
+    }
+
+    if let Ok(content) = fs::read_to_string(&sw_src) {
+        // Derive cache name from asset hashes
+        let cache_name = format!("pop-{}{}", &js_hash[..4], &css_hash[..4]);
+
+        let processed = content
+            .replace("\"pop-v2\"", &format!("\"{}\"", cache_name))
+            .replace(
+                "\"/static/styles.min.css\"",
+                &format!("\"/static/styles.{}.min.css\"", css_hash),
+            )
+            .replace(
+                "\"/static/app.min.js\"",
+                &format!("\"/static/app.{}.min.js\"", js_hash),
+            );
+
+        let _ = fs::write(output.join("sw.js"), &processed);
+        println!("cargo:warning=Built sw.js (cache: {})", cache_name);
+    }
+}
+
+/// Write asset hash constants to OUT_DIR for inclusion in the server binary.
+fn emit_asset_hashes(js_hash: &str, css_hash: &str) {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let dest = Path::new(&out_dir).join("asset_hashes.rs");
+
+    let js_file = if js_hash.is_empty() {
+        "app.min.js".to_string()
+    } else {
+        format!("app.{}.min.js", js_hash)
+    };
+
+    let css_file = if css_hash.is_empty() {
+        "styles.min.css".to_string()
+    } else {
+        format!("styles.{}.min.css", css_hash)
+    };
+
+    let content = format!(
+        r#"/// Hashed JS filename (content-addressed for cache busting)
+pub const JS_HASHED: &str = "{}";
+/// Hashed CSS filename (content-addressed for cache busting)
+pub const CSS_HASHED: &str = "{}";
+"#,
+        js_file, css_file
+    );
+
+    let _ = fs::write(dest, content);
 }

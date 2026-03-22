@@ -1,5 +1,6 @@
 use maud::{html, Markup, DOCTYPE};
 
+use crate::asset_hashes;
 use crate::templates::components::auth_modals::auth_modals;
 use crate::templates::components::profile_modal::profile_modal;
 use crate::templates::layouts::navbar::navbar;
@@ -70,7 +71,7 @@ pub fn base(config: &PageConfig, content: Markup) -> Markup {
 
                 link rel="stylesheet" href="https://unpkg.com/nes.css@latest/css/nes.min.css";
                 link href="https://fonts.googleapis.com/css?family=Press+Start+2P" rel="stylesheet";
-                link rel="stylesheet" href="/static/styles.min.css";
+                link rel="stylesheet" href=(format!("/static/{}", asset_hashes::CSS_HASHED));
 
                 script src="https://unpkg.com/htmx.org@1.9.10" {}
                 script type="module" src="https://unpkg.com/bitcoin-qr@1.4.1/dist/bitcoin-qr/bitcoin-qr.esm.js" {}
@@ -151,6 +152,7 @@ pub fn base(config: &PageConfig, content: Markup) -> Markup {
                 (profile_modal())
                 (how_to_play_modal(config.entry_fee_sats, config.plays_per_payment, config.prize_pool_pct))
 
+                script { (maud::PreEscaped(format!("window.APP_JS_PATH='/static/{}';", asset_hashes::JS_HASHED))) }
                 script type="module" src="/static/loader.js" {}
             }
         }

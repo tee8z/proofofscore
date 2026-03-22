@@ -1,3 +1,4 @@
+pub mod asset_hashes;
 mod config;
 mod daily_tasks;
 mod domain;

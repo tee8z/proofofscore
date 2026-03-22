@@ -30,7 +30,7 @@ async function initApp() {
 
     // Load the bundled app JS and initialize replay viewer once it's ready
     const script = document.createElement('script');
-    script.src = '/static/app.min.js';
+    script.src = window.APP_JS_PATH || '/static/app.min.js';
     script.onload = function() {
         // app.min.js has executed — WASM + DOM are both ready.
         // Kick off the replay viewer if we're on a page with a replay canvas.

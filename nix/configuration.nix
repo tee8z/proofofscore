@@ -100,6 +100,18 @@ in
     # Caddy auto-provisions Let's Encrypt certs
     virtualHosts."proofofplay.win" = {
       extraConfig = ''
+        @hashed_assets {
+          path_regexp \.(css|js)$
+          path /static/*
+        }
+        header @hashed_assets Cache-Control "public, max-age=31536000, immutable"
+
+        @other_static {
+          not path_regexp \.(css|js)$
+          path /static/*
+        }
+        header @other_static Cache-Control "public, max-age=3600"
+
         reverse_proxy 127.0.0.1:8900
       '';
     };
