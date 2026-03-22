@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="proofofplay-icon.svg" width="200" alt="Proof of Play">
+  <img src="assets/proofofplay-icon.svg" width="200" alt="Proof of Play">
 </p>
 
 # Proof of Play
@@ -165,6 +165,7 @@ GET  /api/v1/game/replays/top          Top replay data
 GET  /api/v1/game/replay/{score_id}    Replay data for a specific score
 
 GET  /api/v1/payments/status/{id}      Payment status
+POST /api/v1/payments/tip              Create tip invoice
 
 GET  /api/v1/prizes/check              Claimable prizes (pending + failed)
 POST /api/v1/prizes/claim              Claim prize (LNURL auto-resolve or bolt11)
