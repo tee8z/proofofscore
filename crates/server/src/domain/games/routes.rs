@@ -335,7 +335,7 @@ async fn create_and_return_invoice(
     pubkey: &str,
 ) -> Result<(StatusCode, Json<NewSessionResponse>), Response> {
     let entry_fee = state.settings.competition_settings.entry_fee_sats;
-    let description = format!("Proof of Play Entry Fee - User:{}", pubkey);
+    let description = format!("Proof of Score Entry Fee - User:{}", pubkey);
 
     let invoice_result = state
         .lightning_provider

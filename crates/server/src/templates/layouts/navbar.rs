@@ -22,7 +22,7 @@ pub fn navbar() -> Markup {
                 button class="nes-btn" id="howToPlayBtn" title="How to Play" {
                     "?"
                 }
-                a href="https://github.com/tee8z/proofofplay"
+                a href="https://github.com/tee8z/proofofscore"
                   target="_blank"
                   class="github-link"
                   title="Source code on GitHub" {

@@ -7,7 +7,7 @@ use crate::templates::layouts::base::{base, PageConfig};
 
 pub async fn index_handler(State(state): State<Arc<AppState>>) -> Html<String> {
     let config = PageConfig {
-        title: "Not Found - Proof of Play",
+        title: "Not Found - Proof of Score",
         api_base: &state.remote_url,
         default_relays: &state.settings.ui_settings.default_relays,
         entry_fee_sats: state.settings.competition_settings.entry_fee_sats,

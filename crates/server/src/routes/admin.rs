@@ -148,7 +148,7 @@ pub async fn admin_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Proof of Play Admin</title>
+<title>Proof of Score Admin</title>
 <style>
 body {{ background: #1a1a2e; color: #e0e0e0; font-family: monospace; padding: 20px; margin: 0; }}
 h1 {{ color: #00ff88; }}
@@ -169,7 +169,7 @@ td:hover {{ overflow: visible; white-space: normal; word-break: break-all; }}
 </style>
 </head>
 <body>
-<h1>Proof of Play Admin</h1>
+<h1>Proof of Score Admin</h1>
 <p>Date: {today} UTC</p>
 
 <div class="grid">

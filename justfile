@@ -1,4 +1,4 @@
-# Proof of Play - Development & Deployment Commands
+# Proof of Score - Development & Deployment Commands
 # Run 'just' or 'just --list' to see available commands
 
 # Default recipe - show help

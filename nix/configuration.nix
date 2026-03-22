@@ -1,7 +1,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  appDir = "/opt/proofofplay";
+  appDir = "/opt/proofofscore";
 in
 {
   imports = [ ./hardware-configuration.nix ];
@@ -23,7 +23,7 @@ in
   # Networking & Firewall
   # ============================================
 
-  networking.hostName = "proofofplay";
+  networking.hostName = "proofofscore";
 
   networking.firewall = {
     enable = true;
@@ -44,11 +44,11 @@ in
   networking.wg-quick.interfaces.wg0 = {
     address = [ "10.100.0.1/24" ];
     listenPort = 51820;
-    privateKeyFile = "/opt/proofofplay/secrets/wg-private-key";
+    privateKeyFile = "/opt/proofofscore/secrets/wg-private-key";
 
     peers = [
       {
-        publicKey = builtins.readFile /opt/proofofplay/secrets/wg-client-public-key;
+        publicKey = builtins.readFile /opt/proofofscore/secrets/wg-client-public-key;
         allowedIPs = [ "10.100.0.2/32" ];
       }
     ];
@@ -62,25 +62,25 @@ in
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     openssh.authorizedKeys.keyFiles = [
-      /opt/proofofplay/secrets/authorized_keys
+      /opt/proofofscore/secrets/authorized_keys
     ];
   };
 
-  users.users.proofofplay = {
+  users.users.proofofscore = {
     isSystemUser = true;
-    group = "proofofplay";
+    group = "proofofscore";
     home = appDir;
     createHome = true;
   };
 
-  users.groups.proofofplay = {};
+  users.groups.proofofscore = {};
 
   # ============================================
   # SSH
   # ============================================
 
   users.users.root.openssh.authorizedKeys.keyFiles = [
-    /opt/proofofplay/secrets/authorized_keys
+    /opt/proofofscore/secrets/authorized_keys
   ];
 
   services.openssh = {
@@ -98,7 +98,7 @@ in
   services.caddy = {
     enable = true;
     # Caddy auto-provisions Let's Encrypt certs
-    virtualHosts."proofofplay.win" = {
+    virtualHosts."proofofscore.win" = {
       extraConfig = ''
         @hashed_assets {
           path_regexp \.(css|js)$
@@ -118,18 +118,18 @@ in
   };
 
   # ============================================
-  # Proof of Play service
+  # Proof of Score service
   # ============================================
 
-  systemd.services.proofofplay = {
-    description = "Proof of Play Game Server";
+  systemd.services.proofofscore = {
+    description = "Proof of Score Game Server";
     after = [ "network.target" ];
     wantedBy = [ "multi-user.target" ];
 
     serviceConfig = {
       Type = "simple";
-      User = "proofofplay";
-      Group = "proofofplay";
+      User = "proofofscore";
+      Group = "proofofscore";
       WorkingDirectory = appDir;
       ExecStart = "${appDir}/bin/server -c ${appDir}/config/production.toml";
       Restart = "on-failure";
@@ -153,23 +153,23 @@ in
   # Database backup to Backblaze B2
   # ============================================
 
-  systemd.services.proofofplay-backup = {
-    description = "Backup Proof of Play SQLite to Backblaze B2";
+  systemd.services.proofofscore-backup = {
+    description = "Backup Proof of Score SQLite to Backblaze B2";
     serviceConfig = {
       Type = "oneshot";
-      User = "proofofplay";
-      Group = "proofofplay";
+      User = "proofofscore";
+      Group = "proofofscore";
     };
     path = [ pkgs.sqlite pkgs.backblaze-b2 pkgs.coreutils pkgs.bash ];
     script = let
-      backupScript = pkgs.writeShellScript "proofofplay-backup" ''
+      backupScript = pkgs.writeShellScript "proofofscore-backup" ''
         set -euo pipefail
 
         DB_PATH="${appDir}/data/game.db"
         BACKUP_DIR="${appDir}/backups"
         DATE=$(date +%Y%m%d-%H%M%S)
         BACKUP_FILE="$BACKUP_DIR/game-$DATE.db"
-        B2_BUCKET="proofofplay-backups-prod"
+        B2_BUCKET="proofofscore-backup-prod"
 
         if [ ! -f "$DB_PATH" ]; then
           echo "No database to backup"
@@ -192,8 +192,8 @@ in
     in "${backupScript}";
   };
 
-  systemd.timers.proofofplay-backup = {
-    description = "Daily backup of Proof of Play database";
+  systemd.timers.proofofscore-backup = {
+    description = "Daily backup of Proof of Score database";
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnCalendar = "*-*-* 03:00:00 UTC";

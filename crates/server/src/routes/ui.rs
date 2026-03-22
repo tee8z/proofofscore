@@ -22,7 +22,7 @@ pub async fn home_handler(headers: HeaderMap, State(state): State<Arc<AppState>>
             vec![]
         });
     let config = PageConfig {
-        title: "Proof of Play",
+        title: "Proof of Score",
         api_base: &state.remote_url,
         default_relays: &state.settings.ui_settings.default_relays,
         entry_fee_sats: state.settings.competition_settings.entry_fee_sats,

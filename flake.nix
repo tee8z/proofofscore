@@ -1,5 +1,5 @@
 {
-  description = "Proof of Play - Competitive arcade games with Bitcoin Lightning payments";
+  description = "Proof of Score - Competitive arcade games with Bitcoin Lightning payments";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -62,7 +62,7 @@
 
         # Build workspace dependencies once (for caching)
         workspaceDeps = craneLib.buildDepsOnly ({
-          pname = "proofofplay-workspace-deps";
+          pname = "proofofscore-workspace-deps";
           version = "0.1.0";
           inherit src;
           buildInputs = commonBuildInputs;
@@ -99,7 +99,7 @@
             mkdir -p data
 
             echo ""
-            echo "Proof of Play Development Environment"
+            echo "Proof of Score Development Environment"
             echo "======================================="
             echo ""
             echo "Commands:"

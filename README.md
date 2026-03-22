@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/proofofplay-icon.svg" width="200" alt="Proof of Play">
+  <img src="assets/proofofscore-icon.svg" width="200" alt="Proof of Score">
 </p>
 
-# Proof of Play
+# Proof of Score
 
 Competitive arcade game with Bitcoin Lightning payments, server-verified scores, and a Nostr audit ledger.
 

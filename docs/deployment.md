@@ -30,7 +30,7 @@ scp nix/configuration.nix root@YOUR_SERVER_IP:/etc/nixos/configuration.nix
 
 Edit it on the server to set:
 - Your domain name (replace `YOUR_DOMAIN` in the Caddy config)
-- Your SSH public key at `/opt/proofofplay/secrets/authorized_keys`
+- Your SSH public key at `/opt/proofofscore/secrets/authorized_keys`
 
 Then apply:
 
@@ -41,24 +41,24 @@ ssh root@YOUR_SERVER_IP "nixos-rebuild switch"
 ### 3. Create Directory Structure
 
 ```bash
-ssh root@YOUR_SERVER_IP "mkdir -p /opt/proofofplay/{bin,config,data,secrets,backups,creds,ui/pkg/{nostr_signer,game_engine},static,migrations}"
-ssh root@YOUR_SERVER_IP "chown -R proofofplay:proofofplay /opt/proofofplay"
+ssh root@YOUR_SERVER_IP "mkdir -p /opt/proofofscore/{bin,config,data,secrets,backups,creds,ui/pkg/{nostr_signer,game_engine},static,migrations}"
+ssh root@YOUR_SERVER_IP "chown -R proofofscore:proofofscore /opt/proofofscore"
 ```
 
 ### 4. Configure Secrets
 
 On the server, create:
 
-**Production config** (`/opt/proofofplay/config/production.toml`):
+**Production config** (`/opt/proofofscore/config/production.toml`):
 ```toml
 [db_settings]
-data_folder = "/opt/proofofplay/data"
-migrations_folder = "/opt/proofofplay/migrations"
+data_folder = "/opt/proofofscore/data"
+migrations_folder = "/opt/proofofscore/migrations"
 
 [api_settings]
 domain = "127.0.0.1"
 port = "8900"
-private_key_file = "/opt/proofofplay/creds/private.pem"
+private_key_file = "/opt/proofofscore/creds/private.pem"
 # Voltage fields required by config but unused with LND provider
 voltage_api_key = ""
 voltage_api_url = ""
@@ -67,13 +67,13 @@ voltage_env_id = ""
 voltage_wallet_id = ""
 
 [ui_settings]
-remote_url = "https://proofofplay.win"
-ui_dir = "/opt/proofofplay/ui"
+remote_url = "https://proofofscore.win"
+ui_dir = "/opt/proofofscore/ui"
 
 [ln_settings]
 provider = "lnd"
 lnd_base_url = "https://YOUR_LND_NODE"
-lnd_macaroon_path = "/opt/proofofplay/secrets/admin.macaroon"
+lnd_macaroon_path = "/opt/proofofscore/secrets/admin.macaroon"
 
 [competition_settings]
 start_time = "00:00"
@@ -96,12 +96,12 @@ allowed_subnets = ["10.100.0.0/24", "127.0.0.1/32", "::1/128"]
 
 **LND macaroon**:
 ```bash
-scp /path/to/admin.macaroon root@YOUR_SERVER_IP:/opt/proofofplay/secrets/admin.macaroon
-chown proofofplay:proofofplay /opt/proofofplay/secrets/admin.macaroon
-chmod 600 /opt/proofofplay/secrets/admin.macaroon
+scp /path/to/admin.macaroon root@YOUR_SERVER_IP:/opt/proofofscore/secrets/admin.macaroon
+chown proofofscore:proofofscore /opt/proofofscore/secrets/admin.macaroon
+chmod 600 /opt/proofofscore/secrets/admin.macaroon
 ```
 
-**B2 backup credentials** (`/opt/proofofplay/secrets/b2_credentials`):
+**B2 backup credentials** (`/opt/proofofscore/secrets/b2_credentials`):
 ```bash
 B2_KEY_ID=your_key_id
 B2_APP_KEY=your_app_key
@@ -160,38 +160,38 @@ cargo build --release --target aarch64-unknown-linux-gnu --bin server
 just build-wasm-release
 
 # Deploy
-rsync -avz target/aarch64-unknown-linux-gnu/release/server root@SERVER:/opt/proofofplay/bin/
-rsync -avz --delete ui/pkg/ root@SERVER:/opt/proofofplay/ui/pkg/
-rsync -avz --delete crates/server/static/ root@SERVER:/opt/proofofplay/static/
-rsync -avz --delete crates/server/migrations/ root@SERVER:/opt/proofofplay/migrations/
-ssh root@SERVER "chown -R proofofplay:proofofplay /opt/proofofplay && systemctl restart proofofplay"
+rsync -avz target/aarch64-unknown-linux-gnu/release/server root@SERVER:/opt/proofofscore/bin/
+rsync -avz --delete ui/pkg/ root@SERVER:/opt/proofofscore/ui/pkg/
+rsync -avz --delete crates/server/static/ root@SERVER:/opt/proofofscore/static/
+rsync -avz --delete crates/server/migrations/ root@SERVER:/opt/proofofscore/migrations/
+ssh root@SERVER "chown -R proofofscore:proofofscore /opt/proofofscore && systemctl restart proofofscore"
 ```
 
 ## Operations
 
 ### Check service status
 ```bash
-ssh root@SERVER "systemctl status proofofplay"
-ssh root@SERVER "journalctl -u proofofplay -f"
+ssh root@SERVER "systemctl status proofofscore"
+ssh root@SERVER "journalctl -u proofofscore -f"
 ```
 
 ### Manual backup
 ```bash
-ssh root@SERVER "systemctl start proofofplay-backup"
+ssh root@SERVER "systemctl start proofofscore-backup"
 ```
 
 ### Restore from backup
 ```bash
 # List B2 backups
-b2 ls proofofplay-backups-prod backups/
+b2 ls proofofscore-backups-prod backups/
 
 # Download a backup
-b2 download-file-by-name proofofplay-backups-prod backups/game-20260320-030000.db ./restore.db
+b2 download-file-by-name proofofscore-backups-prod backups/game-20260320-030000.db ./restore.db
 
 # Stop service, replace DB, start service
-ssh root@SERVER "systemctl stop proofofplay"
-scp restore.db root@SERVER:/opt/proofofplay/data/game.db
-ssh root@SERVER "chown proofofplay:proofofplay /opt/proofofplay/data/game.db && systemctl start proofofplay"
+ssh root@SERVER "systemctl stop proofofscore"
+scp restore.db root@SERVER:/opt/proofofscore/data/game.db
+ssh root@SERVER "chown proofofscore:proofofscore /opt/proofofscore/data/game.db && systemctl start proofofscore"
 ```
 
 ### Update NixOS configuration

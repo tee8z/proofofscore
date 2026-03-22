@@ -33,7 +33,7 @@ pub fn game_content(
         div id="game-section" {
             div id="start-screen" class="nes-container is-dark" {
                 div class="start-content" {
-                    h1 class="nes-text is-primary" { "Proof of Play" }
+                    h1 class="nes-text is-primary" { "Proof of Score" }
                     p class="nes-text is-warning" { "Get ready to play!" }
                     p id="playsRemainingDisplay" class="nes-text is-success" style="display: none;" {}
                     div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;" {

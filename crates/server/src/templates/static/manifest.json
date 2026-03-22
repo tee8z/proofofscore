@@ -1,6 +1,6 @@
 {
-  "name": "Proof of Play",
-  "short_name": "PoP",
+  "name": "Proof of Score",
+  "short_name": "PoS",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#212529",

@@ -1,4 +1,4 @@
-# Proof of Play — regtest configuration
+# Proof of Score — regtest configuration
 # Uses local LND node from docker-compose regtest stack.
 # Start the stack first: just regtest-up && just regtest-setup
 

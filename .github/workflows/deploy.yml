@@ -18,7 +18,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
-  APP_DIR: "/opt/proofofplay"
+  APP_DIR: "/opt/proofofscore"
 
 jobs:
   build-and-deploy:
@@ -123,7 +123,7 @@ jobs:
           RSYNC="rsync -avz --delete -e '$SSH'"
 
           # Stop the service
-          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl stop proofofplay || true"
+          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl stop proofofscore || true"
 
           # Deploy binary
           $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "mkdir -p $APP_DIR/{bin,ui/pkg,static,migrations,data,backups,config,secrets,creds}"
@@ -140,10 +140,10 @@ jobs:
           rsync -avz --delete -e "$SSH" deploy/migrations/ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$APP_DIR/migrations/
 
           # Fix ownership
-          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "chown -R proofofplay:proofofplay $APP_DIR"
+          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "chown -R proofofscore:proofofscore $APP_DIR"
 
           # Start the service
-          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl start proofofplay"
+          $SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl start proofofscore"
 
           echo "Deployment complete!"
 
@@ -159,7 +159,7 @@ jobs:
           SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
 
           for i in $(seq 1 10); do
-            status=$($SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl is-active proofofplay" 2>&1) || true
+            status=$($SSH ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "systemctl is-active proofofscore" 2>&1) || true
             if [ "$status" = "active" ]; then
               echo "Service is running!"
               exit 0

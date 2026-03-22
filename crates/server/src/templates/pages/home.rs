@@ -25,7 +25,7 @@ pub fn home_content(
 ) -> Markup {
     html! {
         div id="welcome-screen" class="nes-container is-dark" {
-            h1 class="nes-text is-primary" { "Proof of Play" }
+            h1 class="nes-text is-primary" { "Proof of Score" }
             p class="nes-text is-success" style="font-size: 0.7em; margin-top: 4px;" {
                 (entry_fee_sats) " sats = " (plays_per_payment) " plays"
                 @if plays_ttl_minutes > 0 {

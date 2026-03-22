@@ -1,4 +1,4 @@
-# Proof of Play - E2E Test Configuration
+# Proof of Score - E2E Test Configuration
 # Uses stub Lightning provider (all invoices auto-settle)
 
 [db_settings]
