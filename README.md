@@ -10,7 +10,7 @@ Players pay a small entry fee in sats, compete on leaderboards, and the top scor
 
 ## How It Works
 
-1. **Pay** — Lightning invoice for entry (configurable, default 1000 sats = 5 plays). Users with a lightning address get a one-tap wallet deep-link flow.
+1. **Pay** — Lightning invoice for entry (configurable, default 1000 sats = 3 plays). Users with a lightning address get a one-tap wallet deep-link flow.
 2. **Play** — Asteroids-style game runs in the browser via deterministic WASM engine. Practice mode available for free (no login required, scores not submitted).
 3. **Prove** — Every score is replay-verified server-side before being accepted
 4. **Win** — Top scorer wins the prize pool (configurable, default 80% of entry fees). If the winner has a lightning address, the prize is paid out automatically via LNURL — no manual invoice needed.
