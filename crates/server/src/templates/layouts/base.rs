@@ -63,6 +63,9 @@ pub fn base(config: &PageConfig, content: Markup) -> Markup {
                 meta name="apple-mobile-web-app-capable" content="yes";
                 meta name="apple-mobile-web-app-status-bar-style" content="black-translucent";
                 meta name="format-detection" content="telephone=no";
+                link rel="manifest" href="/static/manifest.json";
+                link rel="icon" type="image/svg+xml" href="/static/icons/favicon.svg";
+                link rel="apple-touch-icon" href="/static/icons/icon-192x192.png";
                 title { (config.title) }
 
                 link rel="stylesheet" href="https://unpkg.com/nes.css@latest/css/nes.min.css";

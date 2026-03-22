@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="proofofplay-icon.svg" width="200" alt="Proof of Play">
+</p>
+
 # Proof of Play
 
 Competitive arcade game with Bitcoin Lightning payments, server-verified scores, and a Nostr audit ledger.

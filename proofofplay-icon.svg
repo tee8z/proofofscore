@@ -1,0 +1,60 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Asteroid ring centered at 200,200 r=155 -->
+  <circle cx="200" cy="200" r="155" fill="none" stroke="#5F5E5A" stroke-width="2.5" stroke-dasharray="8 5"/>
+
+  <!-- BIG asteroid top-center -->
+  <polygon points="200,42 216,48 228,58 224,74 212,80 196,77 182,70 178,56 188,46"
+    fill="#888780" stroke="#5F5E5A" stroke-width="1.5"/>
+  <polygon points="204,50 214,56 211,67 200,70 192,63 194,52" fill="#B4B2A9"/>
+  <polygon points="186,58 190,65 183,67" fill="#6A6860"/>
+
+  <!-- BIG asteroid top-left -->
+  <polygon points="72,88 88,82 102,90 104,104 96,116 78,118 66,108 64,94"
+    fill="#888780" stroke="#5F5E5A" stroke-width="1.4"/>
+  <polygon points="76,94 86,88 96,96 94,108 82,110 72,102" fill="#B4B2A9"/>
+  <polygon points="66,100 73,106 68,110" fill="#6A6860"/>
+
+  <!-- BIG asteroid top-right -->
+  <polygon points="298,82 314,78 326,86 330,100 322,114 306,118 294,110 290,96"
+    fill="#888780" stroke="#5F5E5A" stroke-width="1.4"/>
+  <polygon points="302,90 314,84 324,94 320,106 308,110 298,102" fill="#B4B2A9"/>
+  <polygon points="326,98 320,108 330,104" fill="#6A6860"/>
+
+  <!-- small asteroid bottom-right -->
+  <polygon points="332,296 342,292 350,298 348,310 338,314 328,308 326,300"
+    fill="#B4B2A9" stroke="#888780" stroke-width="1"/>
+  <polygon points="334,300 340,296 346,302 342,308 334,308" fill="#D3D1C7"/>
+
+  <!-- small asteroid bottom-left -->
+  <polygon points="50,290 60,284 68,290 66,302 56,306 46,300 44,292"
+    fill="#B4B2A9" stroke="#888780" stroke-width="1"/>
+  <polygon points="52,294 60,288 64,294 60,302 52,302" fill="#D3D1C7"/>
+
+  <!-- Triangle ship near bottom of ring -->
+  <polygon points="200,248 241,318 159,318" fill="#633806"/>
+  <polygon points="200,252 238,316 162,316" fill="#BA7517" stroke="#EF9F27" stroke-width="1.8"/>
+  <polygon points="200,252 162,316 200,316" fill="#854F0B" opacity="0.45"/>
+  <polygon points="200,265 228,308 172,308" fill="#EF9F27" opacity="0.3"/>
+
+  <!-- Lightning bolt -->
+  <polygon points="200,268 194,288 199,288 192,308 208,288 203,288 209,268"
+    fill="#FCDE5A" stroke="#BA7517" stroke-width="0.6"/>
+
+  <!-- 3 dashed green shots with green dot tips -->
+  <!-- left shot to top-left asteroid -->
+  <line x1="194" y1="251" x2="98" y2="116"
+    stroke="#1D9E75" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="7 5"/>
+  <circle cx="94" cy="110" r="6" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.2"/>
+
+  <!-- center shot to top asteroid -->
+  <line x1="200" y1="249" x2="200" y2="86"
+    stroke="#1D9E75" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="7 5"/>
+  <circle cx="200" cy="80" r="6" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.2"/>
+
+  <!-- right shot to top-right asteroid -->
+  <line x1="206" y1="251" x2="306" y2="116"
+    stroke="#1D9E75" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="7 5"/>
+  <circle cx="310" cy="110" r="6" fill="#5DCAA5" stroke="#0F6E56" stroke-width="1.2"/>
+
+</svg>
