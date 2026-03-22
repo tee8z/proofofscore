@@ -169,7 +169,7 @@ in
         BACKUP_DIR="${appDir}/backups"
         DATE=$(date +%Y%m%d-%H%M%S)
         BACKUP_FILE="$BACKUP_DIR/game-$DATE.db"
-        B2_BUCKET="proofofscore-backup-prod"
+        B2_BUCKET="proofofscore-backups-prod"
 
         if [ ! -f "$DB_PATH" ]; then
           echo "No database to backup"
@@ -182,8 +182,8 @@ in
         CREDS="${appDir}/secrets/b2_credentials"
         if [ -f "$CREDS" ]; then
           source "$CREDS"
-          b2 authorize-account "$B2_KEY_ID" "$B2_APP_KEY" 2>/dev/null
-          b2 upload-file "$B2_BUCKET" "$BACKUP_FILE" "backups/game-$DATE.db"
+          backblaze-b2 account authorize "$B2_KEY_ID" "$B2_APP_KEY" 2>/dev/null
+          backblaze-b2 file upload "$B2_BUCKET" "$BACKUP_FILE" "backups/game-$DATE.db"
           echo "Uploaded to B2"
         fi
 
