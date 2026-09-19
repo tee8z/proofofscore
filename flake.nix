@@ -70,7 +70,7 @@
         } // commonEnvs);
 
         # Server binary
-        server = craneLib.buildPackage ({
+        server = import ./nixos/package.nix { package = craneLib.buildPackage ({
           pname = "server";
           version = "0.1.0";
           inherit src;
@@ -78,7 +78,7 @@
           buildInputs = commonBuildInputs;
           nativeBuildInputs = commonNativeBuildInputs;
           cargoExtraArgs = "--bin server";
-        } // commonEnvs);
+        } // commonEnvs); };
 
         # Development shell
         devShell = pkgs.mkShell {
@@ -144,7 +144,15 @@
           } // commonEnvs);
 
           fmt = craneLib.cargoFmt { inherit src; };
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          nixos-module = (import ./nixos/tests.nix { inherit nixpkgs system; }).derivation;
         };
       }
-    );
+    ) // {
+      nixosModules.proofofscore = { lib, pkgs, ... }: {
+        imports = [ ./nixos/module.nix ];
+        services.proofofscore.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.server;
+      };
+      nixosModules.default = self.nixosModules.proofofscore;
+    };
 }
