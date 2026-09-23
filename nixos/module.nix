@@ -6,11 +6,30 @@ let
   cfg = config.services.proofofscore;
   inherit (cfg) stateDir hostAddress containerAddress port account;
   domain = if cfg.domain == null then "proofofscore.invalid" else cfg.domain;
-  server = cfg.package;
+  # With nix-rollout, each slot runs the build the controller placed in its
+  # directory, bind-mounted here, and the proxy follows the controller's
+  # upstream file. One slot runs at a time: two servers must not share game.db.
+  rollout = cfg.rollout;
+  slotDir = "/var/lib/nix-rollout-slot";
+  server = if rollout != null then "${slotDir}/artifact" else cfg.package;
   containerState = "/var/lib/proofofscore";
+  # One container, proofofscore, or with slots one per slot, pos-<slot>.
+  instances = if cfg.slots == { } then [{
+    container = "proofofscore";
+    slot = null;
+    inherit hostAddress containerAddress;
+  }] else lib.mapAttrsToList (slot: value: {
+    container = "pos-${slot}";
+    inherit slot;
+    inherit (value) hostAddress containerAddress;
+  }) cfg.slots;
+  upstream = if rollout != null then ''
+    reverse_proxy {
+      import ${rollout}/upstream*.caddy ${toString port}
+    }'' else "reverse_proxy ${containerAddress}:${toString port}";
   operator = cfg.operator;
   operatorEnabled = operator.domain != null;
-  configuration = pkgs.writeText "proofofscore.toml" ''
+  configurationFor = instance: pkgs.writeText "proofofscore.toml" ''
     [db_settings]
     data_folder = "${containerState}/data"
     migrations_folder = "${server}/share/proofofscore/migrations"
@@ -52,7 +71,7 @@ let
 
     [admin]
     # Requests arrive from the host proxy after its operator source check.
-    allowed_subnets = ["${hostAddress}/32", "127.0.0.1/32"]
+    allowed_subnets = ["${instance.hostAddress}/32", "127.0.0.1/32"]
   '';
 in
 {
@@ -77,6 +96,30 @@ in
     hostAddress = mkOption { type = types.str; default = "10.91.0.1"; description = "Host-side IPv4 address of the private container link."; };
     containerAddress = mkOption { type = types.str; default = "10.91.0.2"; description = "Container-side IPv4 address of the private link."; };
     port = mkOption { type = types.port; default = 8900; description = "HTTP listener inside the container."; };
+    slots = mkOption {
+      type = types.attrsOf (types.submodule {
+        options = {
+          hostAddress = mkOption { type = types.str; description = "Host-side IPv4 address of the slot's container link."; };
+          containerAddress = mkOption { type = types.str; description = "Container-side IPv4 address of the slot's container link."; };
+        };
+      });
+      default = { };
+      description = "Two containers, pos-<slot>, on the same state, for nix-rollout. Empty runs one container, proofofscore.";
+    };
+    rollout = mkOption {
+      type = types.nullOr (types.strMatching "/[A-Za-z0-9_./-]+");
+      default = null;
+      description = ''
+        nix-rollout runtime directory for the two slots, such as /var/lib/nix-rollout/apps/proofofscore.
+        Each slot then runs the build nix-rollout placed in <rollout>/slots/<slot>/artifact and the proxy
+        follows <rollout>/upstream.caddy. Deploy with the recreate strategy: one server at a time.
+      '';
+    };
+    artifact = mkOption {
+      type = types.package;
+      readOnly = true;
+      description = "The server package as the one store path nix-rollout deploys into a slot.";
+    };
     account = mkOption { type = types.ints.between 1 65534; default = 61200; description = "Numeric UID and GID for persistent application state."; };
     lndUrl = mkOption {
       type = types.str;
@@ -109,13 +152,27 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = lib.mkMerge [
+  # Outside the mkIf: its condition reads this module's options.
+  { services.proofofscore.artifact = lib.mkIf (cfg.package != null) cfg.package; }
+  (lib.mkIf cfg.enable {
+    systemd.services = lib.listToAttrs (map (instance: lib.nameValuePair "container@${instance.container}" {
+      requires = [ "${cfg.storage.prepareService}.service" ];
+      after = [ "${cfg.storage.prepareService}.service" ];
+      bindsTo = lib.optional (cfg.storage.mountUnit != null) cfg.storage.mountUnit;
+      unitConfig.RequiresMountsFor = stateDir;
+      serviceConfig.Slice = lib.mkForce cfg.storage.slice;
+    }) instances);
+  })
+  (lib.mkIf cfg.enable {
     assertions = [
       {
         assertion = cfg.domain != null && builtins.match "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+" domain != null;
         message = "services.proofofscore.domain must be a lowercase DNS hostname.";
       }
-      { assertion = server != null; message = "Set services.proofofscore.package or import the application's flake module."; }
+      { assertion = cfg.package != null; message = "Set services.proofofscore.package or import the application's flake module."; }
+      { assertion = rollout == null || builtins.length instances == 2; message = "services.proofofscore.rollout needs exactly two slots."; }
+      { assertion = cfg.slots == { } || lib.all (instance: builtins.stringLength instance.container <= 11) instances; message = "Proof of Score slot names must be at most 7 characters."; }
       { assertion = lib.hasPrefix "https://" cfg.lndUrl; message = "Set services.proofofscore.lndUrl to the explicit HTTPS LND REST endpoint."; }
       { assertion = !operatorEnabled || operator.allowedCIDRs != [ ]; message = "An operator hostname requires explicit services.proofofscore.operator.allowedCIDRs."; }
       { assertion = !operatorEnabled || operator.domain != domain; message = "Proof of Score public and operator hostnames must differ."; }
@@ -136,12 +193,16 @@ in
       }
     ];
 
-    containers.proofofscore = {
+    containers = lib.listToAttrs (map (instance: lib.nameValuePair instance.container {
       autoStart = true;
       privateNetwork = true;
-      inherit hostAddress;
-      localAddress = containerAddress;
-      bindMounts.${containerState} = { hostPath = stateDir; isReadOnly = false; };
+      inherit (instance) hostAddress;
+      localAddress = instance.containerAddress;
+      bindMounts = {
+        ${containerState} = { hostPath = stateDir; isReadOnly = false; };
+      } // lib.optionalAttrs (rollout != null) {
+        ${slotDir} = { hostPath = "${rollout}/slots/${instance.slot}"; isReadOnly = true; };
+      };
       config = { ... }: {
         system.stateVersion = "26.05";
         networking.firewall.allowedTCPPorts = [ port ];
@@ -169,7 +230,7 @@ in
             User = "proofofscore";
             Group = "proofofscore";
             WorkingDirectory = containerState;
-            ExecStart = "${server}/bin/server -c ${configuration}";
+            ExecStart = "${server}/bin/server -c ${configurationFor instance}";
             Restart = "on-failure";
             RestartSec = 5;
             NoNewPrivileges = true;
@@ -184,25 +245,17 @@ in
           };
         };
       };
-    };
-    systemd.services."container@proofofscore" = {
-      requires = [ "${cfg.storage.prepareService}.service" ];
-      after = [ "${cfg.storage.prepareService}.service" ];
-      bindsTo = lib.optional (cfg.storage.mountUnit != null) cfg.storage.mountUnit;
-      unitConfig.RequiresMountsFor = stateDir;
-      serviceConfig.Slice = lib.mkForce cfg.storage.slice;
-    };
+    }) instances);
     networking.nat = {
       enable = lib.mkIf cfg.manageGateway true;
-      internalInterfaces = [ "ve-proofofscore" ];
+      internalInterfaces = map (instance: "ve-${instance.container}") instances;
     };
     networking.nftables.enable = lib.mkIf cfg.manageGateway true;
     networking.firewall = lib.mkIf cfg.manageGateway {
       backend = "nftables";
       allowedTCPPorts = lib.optionals cfg.gateway.openFirewall [ cfg.gateway.httpPort cfg.gateway.httpsPort ];
-      extraForwardRules = ''
-        iifname "ve-proofofscore" ip saddr ${containerAddress} accept
-      '';
+      extraForwardRules = lib.concatMapStringsSep "\n" (instance:
+        "iifname \"ve-${instance.container}\" ip saddr ${instance.containerAddress} accept") instances;
     };
 
     # Virtual hosts also integrate with an existing shared Caddy instance.
@@ -217,7 +270,7 @@ in
           extraConfig = lib.optionalString (operator.acmeHost == null) "tls internal\n" + ''
             @operator remote_ip ${lib.concatStringsSep " " operator.allowedCIDRs}
             handle @operator {
-              reverse_proxy ${containerAddress}:${toString port}
+              ${upstream}
             }
             respond 403
           '';
@@ -236,7 +289,7 @@ in
               path /static/*
             }
             header @hashed_assets Cache-Control "public, max-age=31536000, immutable"
-            reverse_proxy ${containerAddress}:${toString port}
+            ${upstream}
           }
         '';
       };
@@ -260,5 +313,6 @@ in
       wantedBy = [ "timers.target" ];
       timerConfig = { OnCalendar = "*-*-* 02:30:00"; Persistent = true; };
     };
-  };
+  })
+  ];
 }

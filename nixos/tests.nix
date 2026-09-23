@@ -50,6 +50,16 @@ let
   deniedOperator = evaluate [ enabledModule {
     services.proofofscore.operator.domain = "operator.example.test";
   } ];
+  rolled = evaluate [ enabledModule {
+    services.proofofscore = {
+      slots = {
+        blue = { hostAddress = "10.93.0.1"; containerAddress = "10.93.0.2"; };
+        green = { hostAddress = "10.93.1.1"; containerAddress = "10.93.1.2"; };
+      };
+      rollout = "/var/lib/nix-rollout/apps/proofofscore";
+    };
+  } ];
+  rolledServer = rolled.containers.pos-green.config.systemd.services.proofofscore.serviceConfig.ExecStart;
   publicHost = standalone.services.caddy.virtualHosts."scores.example.test".extraConfig;
   operatorHost = shared.services.caddy.virtualHosts."operator.example.test".extraConfig;
   checks = {
@@ -77,6 +87,15 @@ let
       && lib.hasInfix "echo shared preparation" shared.systemd.services.shared-storage.script;
     exportsKeepStableFilename = lib.hasInfix "/srv/games/exports/proofofscore.db" shared.systemd.services.shared-proofofscore-export.script
       && shared.systemd.timers.shared-proofofscore-export.timerConfig.OnCalendar == "*-*-* 02:30:00";
+    # nix-rollout: one container per slot, each running its slot's build; the proxy follows the controller.
+    rolloutSlotsRunTheirArtifacts = lib.all (assertion: assertion.assertion) rolled.assertions
+      && builtins.attrNames rolled.containers == [ "pos-blue" "pos-green" ]
+      && rolled.containers.pos-green.bindMounts."/var/lib/nix-rollout-slot".hostPath == "/var/lib/nix-rollout/apps/proofofscore/slots/green"
+      && lib.hasPrefix "/var/lib/nix-rollout-slot/artifact/bin/server -c " rolledServer
+      && lib.hasInfix "import /var/lib/nix-rollout/apps/proofofscore/upstream*.caddy 8900"
+        rolled.services.caddy.virtualHosts."scores.example.test".extraConfig
+      && rolled.systemd.services."container@pos-blue".serviceConfig.Slice == "system.slice"
+      && rolled.services.proofofscore.artifact == pkgs.emptyDirectory;
     missingMacaroonKeepsPlaceholder = lib.hasInfix "head -c 32 /dev/urandom" standalone.containers.proofofscore.config.systemd.services.proofofscore.preStart
       && lib.hasInfix "/var/lib/proofofscore/secrets/admin.macaroon" standalone.containers.proofofscore.config.systemd.services.proofofscore.preStart;
   };
