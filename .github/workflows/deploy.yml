@@ -30,10 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      # The build doesn't need the space until well after it has started.
+      - name: Free disk space (in the background)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo docker image prune --all --force || true
+          nohup sudo sh -c 'rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc; docker image prune --all --force' \
+            >/dev/null 2>&1 &
 
       - uses: ./.github/actions/setup-sqlite
 
@@ -42,13 +43,19 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Restores the cache CI's arm64 build saves on master; a tag writes none.
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-aarch64
+          save-if: false
 
       - name: Build release binary
         run: cargo build --release --locked --bin server
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+      - name: Install wasm-pack (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Build WASM modules
         run: |
@@ -139,7 +146,7 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
         env:

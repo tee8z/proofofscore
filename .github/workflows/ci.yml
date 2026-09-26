@@ -59,7 +59,10 @@ jobs:
         with:
           components: clippy
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -74,7 +77,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - run: cargo test --workspace --locked
 
@@ -85,22 +91,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      # The build doesn't need the space until well after it has started.
+      - name: Free disk space (in the background)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo docker image prune --all --force || true
+          nohup sudo sh -c 'rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc; docker image prune --all --force' \
+            >/dev/null 2>&1 &
 
       - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Build workspace
         run: cargo build --workspace --release --locked
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+      - name: Install wasm-pack (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Build WASM modules
         run: |
@@ -143,16 +155,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      # The build doesn't need the space until well after it has started.
+      - name: Free disk space (in the background)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo docker image prune --all --force || true
+          nohup sudo sh -c 'rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc; docker image prune --all --force' \
+            >/dev/null 2>&1 &
 
       - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one. The
+      # deploy workflow restores it too (same shared key).
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-aarch64
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Build workspace
         run: cargo build --workspace --release --locked
