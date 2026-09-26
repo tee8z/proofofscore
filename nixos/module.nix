@@ -11,7 +11,38 @@ let
   # upstream file. One slot runs at a time: two servers must not share game.db.
   rollout = cfg.rollout;
   slotDir = "/var/lib/nix-rollout-slot";
-  server = if rollout != null then "${slotDir}/artifact" else cfg.package;
+  system = pkgs.stdenv.hostPlatform.system;
+  # A published release: the archive for this host's system, as released,
+  # with its executable patched to run against this system's C runtime.
+  release = cfg.release;
+  released = pkgs.stdenv.mkDerivation {
+    pname = "proofofscore";
+    inherit (release) version;
+    src = pkgs.fetchurl {
+      url = "https://github.com/tee8z/proofofscore/releases/download/v${release.version}/proofofscore-${release.version}-${system}.tar.gz";
+      inherit (release) sha256;
+    };
+    nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+    buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+    dontConfigure = true;
+    dontBuild = true;
+    installPhase = ''
+      runHook preInstall
+      if [ "$(cat share/proofofscore/REVISION)" != ${lib.escapeShellArg release.revision} ]; then
+        echo "proofofscore ${release.version} was built from $(cat share/proofofscore/REVISION), not ${release.revision}" >&2
+        exit 1
+      fi
+      mkdir -p $out
+      cp -R bin share $out/
+      install -Dm0644 LICENSE $out/share/licenses/proofofscore/LICENSE
+      runHook postInstall
+    '';
+  };
+  package = if release != null then released else cfg.package;
+  server = if rollout != null then "${slotDir}/artifact" else package;
+  # A release ships the browser modules; other packages leave them to
+  # stateDir/ui.
+  uiDir = if release != null then "${server}/share/proofofscore/ui" else "${containerState}/ui";
   containerState = "/var/lib/proofofscore";
   # One container, proofofscore, or with slots one per slot, pos-<slot>.
   instances = if cfg.slots == { } then [{
@@ -46,7 +77,7 @@ let
 
     [ui_settings]
     remote_url = "https://${domain}"
-    ui_dir = "${containerState}/ui"
+    ui_dir = "${uiDir}"
     static_dir = "${server}/share/proofofscore/static"
 
     [ln_settings]
@@ -81,6 +112,22 @@ in
       type = types.nullOr types.package;
       default = null;
       description = "Server package with bin/server and share/proofofscore/{static,migrations}. The flake module supplies packages.server.";
+    };
+    release = mkOption {
+      type = types.nullOr (types.submodule {
+        options = {
+          version = mkOption { type = types.strMatching "[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?"; example = "0.3.1"; description = "Released version, without the v of its tag."; };
+          sha256 = mkOption { type = types.str; description = "SHA-256 of proofofscore-<version>-<system>.tar.gz for this host's system, from its .sha256 asset."; };
+          revision = mkOption { type = types.strMatching "[0-9a-f]{40}"; description = "Source commit the release was built from; the archive's share/proofofscore/REVISION must match."; };
+        };
+      });
+      default = null;
+      example = { version = "0.3.1"; sha256 = "<64 hex digits>"; revision = "<40 hex digits>"; };
+      description = ''
+        Run this published GitHub release instead of building from source. The module fetches the
+        archive for the host's system and serves its browser modules from share/proofofscore/ui.
+        Null runs `package`.
+      '';
     };
     domain = mkOption {
       type = types.nullOr types.str;
@@ -154,7 +201,7 @@ in
 
   config = lib.mkMerge [
   # Outside the mkIf: its condition reads this module's options.
-  { services.proofofscore.artifact = lib.mkIf (cfg.package != null) cfg.package; }
+  { services.proofofscore.artifact = lib.mkIf (release != null || cfg.package != null) package; }
   (lib.mkIf cfg.enable {
     systemd.services = lib.listToAttrs (map (instance: lib.nameValuePair "container@${instance.container}" {
       requires = [ "${cfg.storage.prepareService}.service" ];
@@ -170,7 +217,7 @@ in
         assertion = cfg.domain != null && builtins.match "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+" domain != null;
         message = "services.proofofscore.domain must be a lowercase DNS hostname.";
       }
-      { assertion = cfg.package != null; message = "Set services.proofofscore.package or import the application's flake module."; }
+      { assertion = release != null || cfg.package != null; message = "Set services.proofofscore.release or package, or import the application's flake module."; }
       { assertion = rollout == null || builtins.length instances == 2; message = "services.proofofscore.rollout needs exactly two slots."; }
       { assertion = cfg.slots == { } || lib.all (instance: builtins.stringLength instance.container <= 11) instances; message = "Proof of Score slot names must be at most 7 characters."; }
       { assertion = lib.hasPrefix "https://" cfg.lndUrl; message = "Set services.proofofscore.lndUrl to the explicit HTTPS LND REST endpoint."; }

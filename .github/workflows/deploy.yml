@@ -1,5 +1,7 @@
 name: Deploy
 
+# The release workflow (release.yml) publishes each tag's GitHub release.
+
 on:
   push:
     tags:
@@ -143,11 +145,3 @@ jobs:
           done
           echo "Service failed to become active after 50s (last status: $status)"
           exit 1
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

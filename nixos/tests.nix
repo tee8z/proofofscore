@@ -59,6 +59,21 @@ let
       rollout = "/var/lib/nix-rollout/apps/proofofscore";
     };
   } ];
+  releasedModule = {
+    services.proofofscore = {
+      enable = true;
+      domain = "scores.example.test";
+      lndUrl = "https://payments.example.test:8080";
+      release = {
+        version = "0.3.1";
+        sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+        revision = "0123456789abcdef0123456789abcdef01234567";
+      };
+    };
+  };
+  released = evaluate [ releasedModule ];
+  releasedArtifact = released.services.proofofscore.artifact;
+  releasedPackageIgnored = evaluate [ releasedModule { services.proofofscore.package = pkgs.emptyDirectory; } ];
   rolledServer = rolled.containers.pos-green.config.systemd.services.proofofscore.serviceConfig.ExecStart;
   publicHost = standalone.services.caddy.virtualHosts."scores.example.test".extraConfig;
   operatorHost = shared.services.caddy.virtualHosts."operator.example.test".extraConfig;
@@ -96,6 +111,14 @@ let
         rolled.services.caddy.virtualHosts."scores.example.test".extraConfig
       && rolled.systemd.services."container@pos-blue".serviceConfig.Slice == "system.slice"
       && rolled.services.proofofscore.artifact == pkgs.emptyDirectory;
+    # A release runs the published archive for the host's system, not a source build.
+    releaseRunsThePublishedArchive = lib.all (assertion: assertion.assertion) released.assertions
+      && releasedArtifact.name == "proofofscore-0.3.1"
+      && releasedArtifact.src.name == "proofofscore-0.3.1-${system}.tar.gz"
+      && lib.elem pkgs.autoPatchelfHook releasedArtifact.nativeBuildInputs
+      && lib.hasPrefix "${releasedArtifact}/bin/server -c "
+        released.containers.proofofscore.config.systemd.services.proofofscore.serviceConfig.ExecStart
+      && releasedPackageIgnored.services.proofofscore.artifact == releasedArtifact;
     missingMacaroonKeepsPlaceholder = lib.hasInfix "head -c 32 /dev/urandom" standalone.containers.proofofscore.config.systemd.services.proofofscore.preStart
       && lib.hasInfix "/var/lib/proofofscore/secrets/admin.macaroon" standalone.containers.proofofscore.config.systemd.services.proofofscore.preStart;
   };
