@@ -53,49 +53,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache SQLite installation
-        id: sqlite-cache
-        uses: actions/cache@v4
-        with:
-          key: sqlite-3500400-v2-${{ runner.os }}
-          path: ${{ env.SQLITE_DIR }}
-
-      - name: Install SQLite with sqlx features
-        if: steps.sqlite-cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-          tar xzf sqlite-autoconf-3500400.tar.gz
-          cd sqlite-autoconf-3500400
-          ./configure --prefix=${{ env.SQLITE_DIR }} \
-              --enable-threadsafe \
-              CFLAGS="-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-                      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-                      -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-                      -DSQLITE_ENABLE_FTS3=1 \
-                      -DSQLITE_ENABLE_FTS4=1 \
-                      -DSQLITE_ENABLE_FTS5=1 \
-                      -DSQLITE_ENABLE_JSON1=1 \
-                      -DSQLITE_ENABLE_RTREE=1 \
-                      -DSQLITE_ENABLE_MATH_FUNCTIONS=1 \
-                      -DSQLITE_ENABLE_STAT4=1"
-          make -j$(nproc)
-          make install
-          cd ..
-          rm -rf sqlite-autoconf-3500400 sqlite-autoconf-3500400.tar.gz
-
-      - name: Set SQLite environment
-        run: |
-          echo "${{ env.SQLITE_DIR }}/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=${{ env.SQLITE_DIR }}/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${{ env.SQLITE_DIR }}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=${{ env.SQLITE_DIR }}/lib" >> $GITHUB_ENV
-          echo "SQLITE3_INCLUDE_DIR=${{ env.SQLITE_DIR }}/include" >> $GITHUB_ENV
+      - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -106,47 +73,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache SQLite installation
-        id: sqlite-cache
-        uses: actions/cache@v4
-        with:
-          key: sqlite-3500400-v2-${{ runner.os }}
-          path: ${{ env.SQLITE_DIR }}
-
-      - name: Install SQLite with sqlx features
-        if: steps.sqlite-cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-          tar xzf sqlite-autoconf-3500400.tar.gz
-          cd sqlite-autoconf-3500400
-          ./configure --prefix=${{ env.SQLITE_DIR }} \
-              --enable-threadsafe \
-              CFLAGS="-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-                      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-                      -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-                      -DSQLITE_ENABLE_FTS3=1 \
-                      -DSQLITE_ENABLE_FTS4=1 \
-                      -DSQLITE_ENABLE_FTS5=1 \
-                      -DSQLITE_ENABLE_JSON1=1 \
-                      -DSQLITE_ENABLE_RTREE=1 \
-                      -DSQLITE_ENABLE_MATH_FUNCTIONS=1 \
-                      -DSQLITE_ENABLE_STAT4=1"
-          make -j$(nproc)
-          make install
-          cd ..
-          rm -rf sqlite-autoconf-3500400 sqlite-autoconf-3500400.tar.gz
-
-      - name: Set SQLite environment
-        run: |
-          echo "${{ env.SQLITE_DIR }}/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=${{ env.SQLITE_DIR }}/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${{ env.SQLITE_DIR }}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=${{ env.SQLITE_DIR }}/lib" >> $GITHUB_ENV
-          echo "SQLITE3_INCLUDE_DIR=${{ env.SQLITE_DIR }}/include" >> $GITHUB_ENV
+      - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - run: cargo test --workspace --locked
 
@@ -157,58 +91,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      # The build doesn't need the space until well after it has started.
+      - name: Free disk space (in the background)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo docker image prune --all --force || true
+          nohup sudo sh -c 'rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc; docker image prune --all --force' \
+            >/dev/null 2>&1 &
 
-      - name: Cache SQLite installation
-        id: sqlite-cache
-        uses: actions/cache@v4
-        with:
-          key: sqlite-3500400-v2-${{ runner.os }}
-          path: ${{ env.SQLITE_DIR }}
-
-      - name: Install SQLite with sqlx features
-        if: steps.sqlite-cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-          tar xzf sqlite-autoconf-3500400.tar.gz
-          cd sqlite-autoconf-3500400
-          ./configure --prefix=${{ env.SQLITE_DIR }} \
-              --enable-threadsafe \
-              CFLAGS="-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-                      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-                      -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-                      -DSQLITE_ENABLE_FTS3=1 \
-                      -DSQLITE_ENABLE_FTS4=1 \
-                      -DSQLITE_ENABLE_FTS5=1 \
-                      -DSQLITE_ENABLE_JSON1=1 \
-                      -DSQLITE_ENABLE_RTREE=1 \
-                      -DSQLITE_ENABLE_MATH_FUNCTIONS=1 \
-                      -DSQLITE_ENABLE_STAT4=1"
-          make -j$(nproc)
-          make install
-          cd ..
-          rm -rf sqlite-autoconf-3500400 sqlite-autoconf-3500400.tar.gz
-
-      - name: Set SQLite environment
-        run: |
-          echo "${{ env.SQLITE_DIR }}/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=${{ env.SQLITE_DIR }}/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${{ env.SQLITE_DIR }}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=${{ env.SQLITE_DIR }}/lib" >> $GITHUB_ENV
-          echo "SQLITE3_INCLUDE_DIR=${{ env.SQLITE_DIR }}/include" >> $GITHUB_ENV
+      - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Build workspace
         run: cargo build --workspace --release --locked
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+      - name: Install wasm-pack (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Build WASM modules
         run: |
@@ -251,52 +155,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      # The build doesn't need the space until well after it has started.
+      - name: Free disk space (in the background)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo docker image prune --all --force || true
+          nohup sudo sh -c 'rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc; docker image prune --all --force' \
+            >/dev/null 2>&1 &
 
-      - name: Cache SQLite installation
-        id: sqlite-cache
-        uses: actions/cache@v4
-        with:
-          key: sqlite-3500400-v2-${{ runner.os }}-arm64
-          path: ${{ env.SQLITE_DIR }}
-
-      - name: Install SQLite with sqlx features
-        if: steps.sqlite-cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-          tar xzf sqlite-autoconf-3500400.tar.gz
-          cd sqlite-autoconf-3500400
-          ./configure --prefix=${{ env.SQLITE_DIR }} \
-              --enable-threadsafe \
-              CFLAGS="-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-                      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-                      -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-                      -DSQLITE_ENABLE_FTS3=1 \
-                      -DSQLITE_ENABLE_FTS4=1 \
-                      -DSQLITE_ENABLE_FTS5=1 \
-                      -DSQLITE_ENABLE_JSON1=1 \
-                      -DSQLITE_ENABLE_RTREE=1 \
-                      -DSQLITE_ENABLE_MATH_FUNCTIONS=1 \
-                      -DSQLITE_ENABLE_STAT4=1"
-          make -j$(nproc)
-          make install
-          cd ..
-          rm -rf sqlite-autoconf-3500400 sqlite-autoconf-3500400.tar.gz
-
-      - name: Set SQLite environment
-        run: |
-          echo "${{ env.SQLITE_DIR }}/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=${{ env.SQLITE_DIR }}/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${{ env.SQLITE_DIR }}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=${{ env.SQLITE_DIR }}/lib" >> $GITHUB_ENV
-          echo "SQLITE3_INCLUDE_DIR=${{ env.SQLITE_DIR }}/include" >> $GITHUB_ENV
+      - uses: ./.github/actions/setup-sqlite
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Pull requests restore master's cache but never write one. The
+      # deploy workflow restores it too (same shared key).
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-aarch64
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Build workspace
         run: cargo build --workspace --release --locked
@@ -316,43 +190,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache SQLite installation
-        id: sqlite-cache
-        uses: actions/cache@v4
-        with:
-          key: sqlite-3500400-v2-${{ runner.os }}
-          path: ${{ env.SQLITE_DIR }}
-
-      - name: Install SQLite with sqlx features
-        if: steps.sqlite-cache.outputs.cache-hit != 'true'
-        run: |
-          wget https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-          tar xzf sqlite-autoconf-3500400.tar.gz
-          cd sqlite-autoconf-3500400
-          ./configure --prefix=${{ env.SQLITE_DIR }} \
-              --enable-threadsafe \
-              CFLAGS="-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-                      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-                      -DSQLITE_ENABLE_DBSTAT_VTAB=1 \
-                      -DSQLITE_ENABLE_FTS3=1 \
-                      -DSQLITE_ENABLE_FTS4=1 \
-                      -DSQLITE_ENABLE_FTS5=1 \
-                      -DSQLITE_ENABLE_JSON1=1 \
-                      -DSQLITE_ENABLE_RTREE=1 \
-                      -DSQLITE_ENABLE_MATH_FUNCTIONS=1 \
-                      -DSQLITE_ENABLE_STAT4=1"
-          make -j$(nproc)
-          make install
-          cd ..
-          rm -rf sqlite-autoconf-3500400 sqlite-autoconf-3500400.tar.gz
-
-      - name: Set SQLite environment
-        run: |
-          echo "${{ env.SQLITE_DIR }}/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=${{ env.SQLITE_DIR }}/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=${{ env.SQLITE_DIR }}/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=${{ env.SQLITE_DIR }}/lib" >> $GITHUB_ENV
-          echo "SQLITE3_INCLUDE_DIR=${{ env.SQLITE_DIR }}/include" >> $GITHUB_ENV
+      - uses: ./.github/actions/setup-sqlite
 
       - name: Download server binary
         uses: actions/download-artifact@v4
@@ -403,13 +241,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+      # The Nix store, keyed on everything that changes the dependency
+      # builds. Pull requests restore master's store but never save one.
+      - name: Cache the Nix store
+        uses: nix-community/cache-nix-action@v7
         with:
-          use-gha-cache: false
-          use-flakehub: false
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'Cargo.lock', '**/*.nix') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+          save: ${{ github.ref == 'refs/heads/master' }}
+          purge: ${{ github.ref == 'refs/heads/master' }}
+          purge-prefixes: nix-${{ runner.os }}-${{ runner.arch }}-
+          purge-created: 0
+          purge-primary-key: never
 
       - name: Run flake check
         run: nix flake check

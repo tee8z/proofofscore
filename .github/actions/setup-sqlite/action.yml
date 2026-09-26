@@ -1,0 +1,67 @@
+name: Set up SQLite
+description: >-
+  Build SQLite with the features sqlx needs into $SQLITE_DIR, or reuse a
+  cached build whose stamp matches the verified source and flags. Only master
+  saves the cache.
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the SQLite build
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        key: sqlite-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/actions/setup-sqlite/action.yml') }}
+        path: ${{ env.SQLITE_DIR }}
+
+    - name: Build SQLite unless the cached stamp matches
+      shell: bash
+      env:
+        SQLITE_VERSION: "3500400"
+        SQLITE_SHA256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+        SQLITE_CFLAGS: >-
+          -DSQLITE_ENABLE_UNLOCK_NOTIFY=1
+          -DSQLITE_ENABLE_COLUMN_METADATA=1
+          -DSQLITE_ENABLE_DBSTAT_VTAB=1
+          -DSQLITE_ENABLE_FTS3=1
+          -DSQLITE_ENABLE_FTS4=1
+          -DSQLITE_ENABLE_FTS5=1
+          -DSQLITE_ENABLE_JSON1=1
+          -DSQLITE_ENABLE_RTREE=1
+          -DSQLITE_ENABLE_MATH_FUNCTIONS=1
+          -DSQLITE_ENABLE_STAT4=1
+      run: |
+        stamp="$SQLITE_VERSION $SQLITE_SHA256 $SQLITE_CFLAGS"
+        if [ -f "$SQLITE_DIR/.stamp" ] && [ "$(cat "$SQLITE_DIR/.stamp")" = "$stamp" ]; then
+          echo "Reusing the cached SQLite $SQLITE_VERSION build"
+          exit 0
+        fi
+        rm -rf "$SQLITE_DIR"
+        work=$(mktemp -d)
+        curl -fsSL -o "$work/sqlite.tar.gz" "https://www.sqlite.org/2025/sqlite-autoconf-$SQLITE_VERSION.tar.gz"
+        echo "$SQLITE_SHA256  $work/sqlite.tar.gz" | sha256sum -c -
+        tar -xzf "$work/sqlite.tar.gz" -C "$work"
+        cd "$work/sqlite-autoconf-$SQLITE_VERSION"
+        ./configure --prefix="$SQLITE_DIR" --enable-threadsafe CFLAGS="$SQLITE_CFLAGS"
+        make -j"$(nproc)"
+        make install
+        echo "$stamp" > "$SQLITE_DIR/.stamp"
+        rm -rf "$work"
+
+    - name: Save the SQLite build (master only)
+      if: steps.restore.outputs.cache-hit != 'true' && github.ref == 'refs/heads/master'
+      uses: actions/cache/save@v4
+      with:
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+        path: ${{ env.SQLITE_DIR }}
+
+    - name: Point the build at SQLite
+      shell: bash
+      run: |
+        echo "$SQLITE_DIR/bin" >> "$GITHUB_PATH"
+        {
+          echo "LD_LIBRARY_PATH=$SQLITE_DIR/lib:$LD_LIBRARY_PATH"
+          echo "PKG_CONFIG_PATH=$SQLITE_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+          echo "SQLITE3_LIB_DIR=$SQLITE_DIR/lib"
+          echo "SQLITE3_INCLUDE_DIR=$SQLITE_DIR/include"
+        } >> "$GITHUB_ENV"
