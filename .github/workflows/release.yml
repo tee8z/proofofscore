@@ -12,6 +12,11 @@ on:
     # workspace's own crates. A warm pass publishes nothing.
     branches:
       - master
+  # A pull request that changes how releases are built gets a dry run.
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/package-release.sh
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,10 +25,11 @@ on:
         type: boolean
         default: true
 
-# One release at a time; a newer push replaces an older warm pass or dry run.
+# One release at a time; a newer push replaces an older warm pass or
+# pull request dry run.
 concurrency:
   group: ${{ github.ref_type == 'tag' && 'release' || format('release-{0}', github.ref) }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name == 'push' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -56,6 +62,8 @@ jobs:
           warm=false
           if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = branch ]; then
             warm=true
+            dry_run=true
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             dry_run=true
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             dry_run=$INPUT_DRY_RUN

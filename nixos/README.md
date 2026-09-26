@@ -25,6 +25,21 @@ Both exports select the server package with its generated static assets and migr
 ```
 
 Replace the example hostname, endpoint, and operator source before deployment.
+
+To run a published release instead of a source build, set `release`.
+Take `sha256` from the `proofofscore-<version>-<system>.tar.gz.sha256` asset for the host's system, and `revision` from the release's tag commit:
+
+```nix
+services.proofofscore.release = {
+  version = "0.3.1";
+  sha256 = "<the archive's SHA-256>";
+  revision = "<the tagged commit>";
+};
+```
+
+The module fetches the archive, patches the executable for the host's C runtime, and checks that the archive was built from `revision`.
+It also serves the browser modules from the archive's `share/proofofscore/ui`; without a release they come from `stateDir/ui`.
+A release takes precedence over `package`.
 The module enables Caddy and container NAT by default.
 Opening the host HTTP and HTTPS ports requires `gateway.openFirewall = true`.
 
