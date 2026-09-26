@@ -66,7 +66,10 @@ impl Application {
             config.api_settings.domain, config.api_settings.port
         );
         let listener = SocketAddr::from_str(&address)?;
+        let metrics_settings = config.metrics.clone();
         let (app_state, serve_dir) = build_app(config).await?;
+        crate::metrics::start_metrics_listener(&metrics_settings, app_state.game_store.get_pool())
+            .await?;
         let server = build_server(listener, app_state, serve_dir).await?;
         Ok(Self { server })
     }

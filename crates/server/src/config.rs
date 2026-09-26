@@ -21,6 +21,11 @@ pub struct Cli {
     /// Log level to run with the service (default: info)
     #[arg(short, long)]
     pub level: Option<String>,
+
+    /// Address for the optional Prometheus metrics listener, e.g.
+    /// 127.0.0.1:9100 (overrides `[metrics] bind`; unset means no listener)
+    #[arg(long, env = "PROOFOFSCORE_METRICS_BIND")]
+    pub metrics_bind: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -38,6 +43,8 @@ pub struct Settings {
     pub bot_detection: BotDetectionSettings,
     #[serde(default)]
     pub admin: AdminSettings,
+    #[serde(default)]
+    pub metrics: MetricsSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -271,6 +278,15 @@ impl Default for AdminSettings {
     }
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MetricsSettings {
+    /// Address for a separate Prometheus listener serving only `GET /metrics`
+    /// (e.g. "127.0.0.1:9100"). Unset (the default) runs no metrics listener.
+    /// The listener has no authentication; bind it to a private address.
+    #[serde(default)]
+    pub bind: Option<String>,
+}
+
 pub fn get_settings() -> Result<Settings, anyhow::Error> {
     let cli = Cli::parse();
 
@@ -327,6 +343,10 @@ pub fn get_settings() -> Result<Settings, anyhow::Error> {
 
     if let Some(cli_level) = cli.level {
         settings.level = Some(cli_level);
+    }
+
+    if let Some(metrics_bind) = cli.metrics_bind {
+        settings.metrics.bind = Some(metrics_bind);
     }
 
     Ok(settings)

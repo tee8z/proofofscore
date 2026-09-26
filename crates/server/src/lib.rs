@@ -5,6 +5,7 @@ mod domain;
 mod file_utils;
 mod invoice_watcher;
 mod lightning;
+pub mod metrics;
 mod nostr_extractor;
 mod routes;
 mod secrets;

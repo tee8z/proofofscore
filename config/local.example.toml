@@ -50,3 +50,9 @@ allowed_subnets = ["10.100.0.0/24", "127.0.0.1/32", "::1/128"]
 # For testing payouts quickly, use a short window:
 # start_time = "22:00"
 # duration_secs = 600
+
+[metrics]
+# Optional Prometheus listener serving only GET /metrics, with no auth.
+# Leave unset to disable it. Bind to a private address.
+# Also settable with --metrics-bind or PROOFOFSCORE_METRICS_BIND.
+# bind = "127.0.0.1:9100"

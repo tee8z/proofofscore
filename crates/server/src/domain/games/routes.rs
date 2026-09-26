@@ -177,6 +177,7 @@ pub async fn start_new_session(
         match state.game_store.create_session(user.id, &client_ip).await {
             Ok(session) => match state.game_store.create_game_config(&session).await {
                 Ok(config) => {
+                    crate::metrics::metrics().game_sessions_started.inc();
                     let plays_remaining = state
                         .payment_store
                         .use_one_play(user.id)
@@ -237,6 +238,8 @@ pub async fn start_new_session(
                     .await
                 {
                     error!("Failed to update payment status: {}", e);
+                } else {
+                    crate::metrics::metrics().invoices_paid.inc();
                 }
 
                 // Grant plays for this payment with expiry
@@ -256,6 +259,7 @@ pub async fn start_new_session(
                 match state.game_store.create_session(user.id, &client_ip).await {
                     Ok(session) => match state.game_store.create_game_config(&session).await {
                         Ok(config) => {
+                            crate::metrics::metrics().game_sessions_started.inc();
                             let plays_remaining = state
                                 .payment_store
                                 .use_one_play(user.id)
@@ -343,6 +347,7 @@ async fn create_and_return_invoice(
         .await
         .map_err(|e| {
             error!("Failed to create invoice: {}", e);
+            crate::metrics::metrics().invoice_created(crate::metrics::RESULT_ERROR);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to create payment invoice",
@@ -374,6 +379,7 @@ async fn create_and_return_invoice(
             }
             invoice.ok_or_else(|| {
                 error!("Failed to get invoice after polling");
+                crate::metrics::metrics().invoice_created(crate::metrics::RESULT_ERROR);
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Failed to generate Lightning invoice. Please try again.",
@@ -384,6 +390,7 @@ async fn create_and_return_invoice(
     };
 
     info!("Successfully obtained invoice: {}", invoice_str);
+    crate::metrics::metrics().invoice_created(crate::metrics::RESULT_OK);
 
     let payment = state
         .payment_store
@@ -459,6 +466,7 @@ pub async fn submit_score(
             "Input hash mismatch: computed={}, submitted={}",
             computed_hash, submission.input_hash
         );
+        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
         return Err((StatusCode::BAD_REQUEST, "Input hash mismatch").into_response());
     }
 
@@ -490,6 +498,7 @@ pub async fn submit_score(
             "Score verification failed: claimed={}, replayed={}, frames={}/{}",
             submission.score, result.score, submission.frames, result.frames
         );
+        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
         return Err((StatusCode::BAD_REQUEST, "Score verification failed").into_response());
     }
 
@@ -524,6 +533,7 @@ pub async fn submit_score(
                             "Bot detection rejected score from IP {}: {:?}",
                             ip, ip_result.flags
                         );
+                        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
                         return Err((StatusCode::FORBIDDEN, "Submission rejected").into_response());
                     }
                     bot_flags.extend(ip_result.flags);
@@ -559,6 +569,7 @@ pub async fn submit_score(
                     "Server timing rejected: session={}, frames={}, elapsed={}s, flags={:?}",
                     submission.session_id, submission.frames, server_elapsed, timing_result.flags
                 );
+                crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
                 return Err((StatusCode::FORBIDDEN, "Submission rejected").into_response());
             }
             bot_flags.extend(timing_result.flags);
@@ -574,6 +585,7 @@ pub async fn submit_score(
                             "Timing cross-reference rejected: session={}, flags={:?}",
                             submission.session_id, xref.flags
                         );
+                        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
                         return Err((StatusCode::FORBIDDEN, "Submission rejected").into_response());
                     }
                     bot_flags.extend(xref.flags);
@@ -610,6 +622,13 @@ pub async fn submit_score(
         .await
     {
         Ok(score) => {
+            let outcome = if bot_flags.is_empty() {
+                crate::metrics::SCORE_ACCEPTED
+            } else {
+                crate::metrics::SCORE_FLAGGED
+            };
+            crate::metrics::metrics().score_submitted(outcome);
+
             // Publish verified score to audit ledger
             if let Err(e) = state
                 .ledger_service

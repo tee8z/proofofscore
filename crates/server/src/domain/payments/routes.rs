@@ -127,6 +127,8 @@ pub async fn check_payment_status(
                     .await
                 {
                     error!("Failed to update payment status: {}", e);
+                } else {
+                    crate::metrics::metrics().invoices_paid.inc();
                 }
 
                 // Grant plays if not already granted (idempotent — invoice
@@ -526,6 +528,7 @@ pub async fn claim_prize(
         .await
     {
         Ok(payment_id) => {
+            crate::metrics::metrics().payout(crate::metrics::PAYOUT_SUCCEEDED);
             if let Err(e) = state
                 .payment_store
                 .update_prize_status(prize.id, "paid", Some(&payment_id))
@@ -564,6 +567,7 @@ pub async fn claim_prize(
         }
         Err(e) => {
             error!("Failed to send prize payment: {}", e);
+            crate::metrics::metrics().payout(crate::metrics::PAYOUT_FAILED);
 
             // Record as failed — but extract and store the payment hash
             // from the error if possible, so we can verify it on retry.

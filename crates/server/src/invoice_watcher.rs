@@ -31,6 +31,8 @@ pub async fn run_invoice_watcher(state: Arc<AppState>) {
                 error!("Invoice watcher: stream error: {}, reconnecting in 5s", e);
             }
         }
+        // Either way the subscription was lost and is being restarted.
+        crate::metrics::metrics().lnd_invoice_stream_errors.inc();
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }
@@ -128,6 +130,8 @@ async fn handle_invoice_event(json_line: &str, state: &Arc<AppState>) -> Result<
         .await
     {
         error!("Invoice watcher: failed to update payment status: {}", e);
+    } else {
+        crate::metrics::metrics().invoices_paid.inc();
     }
 
     // Grant plays with TTL
