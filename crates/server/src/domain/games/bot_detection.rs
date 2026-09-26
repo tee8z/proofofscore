@@ -90,7 +90,9 @@ pub fn analyze_frame_timings(
 
     // Decode i16 array (little-endian)
     let samples: Vec<i64> = timing_bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as i64)
         .collect();
 
@@ -137,7 +139,9 @@ pub fn extract_timing_signals(timing_bytes: &[u8]) -> Option<TimingSignals> {
     }
 
     let samples: Vec<i64> = timing_bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as i64)
         .collect();
 
@@ -187,7 +191,9 @@ pub fn cross_reference_timings(
 
     // Decode i16 offsets (microseconds from expected 1-second intervals)
     let samples: Vec<i64> = timing_bytes
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as i64)
         .collect();
 

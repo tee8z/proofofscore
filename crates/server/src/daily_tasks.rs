@@ -257,6 +257,7 @@ async fn attempt_auto_payout(
         .await
     {
         Ok(payment_id) => {
+            crate::metrics::metrics().payout(crate::metrics::PAYOUT_SUCCEEDED);
             if let Err(e) = state
                 .payment_store
                 .update_prize_status(prize.id, "paid", Some(&payment_id))
@@ -279,6 +280,7 @@ async fn attempt_auto_payout(
             }
         }
         Err(e) => {
+            crate::metrics::metrics().payout(crate::metrics::PAYOUT_FAILED);
             error!(
                 "Auto-payout failed for {} ({} sats): {} — marked as failed for retry",
                 ln_addr, amount_sats, e

@@ -25,6 +25,7 @@ hex = "0.4.3"
 hyper = "1.4.0"
 log = "0.4.18"
 nostr-sdk = { version = "0.38.0" }
+prometheus = { version = "0.13", default-features = false }
 openssl = { version = "0.10", features = ["vendored"] }
 pem-rfc7468 = { version = "0.7.0", features = ["alloc"] }
 rand = "0.8.5"
