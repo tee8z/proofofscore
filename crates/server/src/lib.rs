@@ -1,3 +1,7 @@
+// Route handlers return `Result<_, Response>`: the error arm is a finished
+// HTTP response by design, so its size is not a concern.
+#![allow(clippy::result_large_err)]
+
 pub mod asset_hashes;
 mod config;
 mod daily_tasks;
