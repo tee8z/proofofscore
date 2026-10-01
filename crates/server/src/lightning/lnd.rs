@@ -79,14 +79,12 @@ impl LndClient {
 
         let mut builder = reqwest::Client::builder();
 
-        // If a TLS cert is provided (self-signed LND node), add it and disable
-        // default system root verification so the self-signed cert is trusted.
+        // Trust the supplied LND certificate while preserving certificate and
+        // hostname verification.
         if let Some(cert_path) = tls_cert_path {
             let cert_pem = std::fs::read(cert_path)?;
             let cert = reqwest::Certificate::from_pem(&cert_pem)?;
-            builder = builder
-                .add_root_certificate(cert)
-                .danger_accept_invalid_certs(true);
+            builder = builder.add_root_certificate(cert);
         }
 
         let client = builder.build()?;

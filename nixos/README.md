@@ -54,6 +54,12 @@ Place the LND macaroon at `stateDir/secrets/admin.macaroon` with ownership match
 Without a macaroon, startup writes a random placeholder and payments remain unavailable.
 The application signing key path remains `/var/lib/proofofscore/creds/private.pem`.
 
+For a self-signed LND certificate, provision its PEM file at `stateDir/secrets/lnd-tls.cert` on the host.
+Make the file readable by `account`, then set `lndTlsCertPath = "/var/lib/proofofscore/secrets/lnd-tls.cert";`.
+This option names a runtime path inside the container; the module does not copy the certificate into the Nix store.
+The certificate must cover the hostname or IP address in `lndUrl`; certificate and hostname verification remain enabled.
+Leave the option unset to use the default trust roots.
+
 For a shared host gateway, set `manageGateway = false`.
 The module still contributes Caddy virtual hosts and the `ve-proofofscore` NAT interface.
 The host must enable Caddy, configure its listeners, and permit outbound container traffic.

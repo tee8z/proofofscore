@@ -84,6 +84,7 @@ let
     provider = "lnd"
     lnd_base_url = "${cfg.lndUrl}"
     lnd_macaroon_path = "${containerState}/secrets/admin.macaroon"
+    ${lib.optionalString (cfg.lndTlsCertPath != null) "lnd_tls_cert_path = ${builtins.toJSON cfg.lndTlsCertPath}"}
 
     [competition_settings]
     start_time = "00:00"
@@ -174,6 +175,17 @@ in
       example = "https://lnd.example.org:8080";
       description = "Explicit LND REST endpoint. Supply its macaroon at stateDir/secrets/admin.macaroon.";
     };
+    lndTlsCertPath = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/var/lib/proofofscore/secrets/lnd-tls.cert";
+      description = ''
+        Absolute runtime path inside the container to a PEM certificate trusted for LND.
+        Provision it under stateDir on the host, or provide a separate container mount.
+        The file must be readable by the application account. Null uses the default trust roots.
+        Certificate and hostname verification remain enabled.
+      '';
+    };
     operator = {
       domain = mkOption { type = types.nullOr types.str; default = null; description = "Optional hostname for operator routes."; };
       allowedCIDRs = mkOption { type = types.listOf types.str; default = [ ]; description = "Source CIDRs permitted on the operator hostname."; };
@@ -221,6 +233,7 @@ in
       { assertion = rollout == null || builtins.length instances == 2; message = "services.proofofscore.rollout needs exactly two slots."; }
       { assertion = cfg.slots == { } || lib.all (instance: builtins.stringLength instance.container <= 11) instances; message = "Proof of Score slot names must be at most 7 characters."; }
       { assertion = lib.hasPrefix "https://" cfg.lndUrl; message = "Set services.proofofscore.lndUrl to the explicit HTTPS LND REST endpoint."; }
+      { assertion = cfg.lndTlsCertPath == null || lib.hasPrefix "/" cfg.lndTlsCertPath; message = "services.proofofscore.lndTlsCertPath must be an absolute path inside the container."; }
       { assertion = !operatorEnabled || operator.allowedCIDRs != [ ]; message = "An operator hostname requires explicit services.proofofscore.operator.allowedCIDRs."; }
       { assertion = !operatorEnabled || operator.domain != domain; message = "Proof of Score public and operator hostnames must differ."; }
       { assertion = lib.hasPrefix "/" stateDir && lib.hasPrefix "/" cfg.storage.exportDir; message = "Proof of Score state and export directories must be absolute paths."; }
@@ -267,6 +280,12 @@ in
           after = [ "network-online.target" ];
           preStart = ''
             umask 077
+            ${lib.optionalString (cfg.lndTlsCertPath != null) ''
+              if [ ! -f ${lib.escapeShellArg cfg.lndTlsCertPath} ] || [ ! -r ${lib.escapeShellArg cfg.lndTlsCertPath} ] || [ ! -s ${lib.escapeShellArg cfg.lndTlsCertPath} ]; then
+                echo "The configured LND TLS certificate must be a readable, nonempty file inside the container." >&2
+                exit 1
+              fi
+            ''}
             mkdir -p ${containerState}/data ${containerState}/creds ${containerState}/secrets ${containerState}/ui
             if [ ! -s ${containerState}/secrets/admin.macaroon ]; then
               echo "No LND macaroon at ${containerState}/secrets/admin.macaroon; installing a placeholder, payments stay disabled." >&2
