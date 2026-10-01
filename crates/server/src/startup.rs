@@ -323,7 +323,12 @@ async fn log_request(request: Request<Body>, next: Next) -> impl IntoResponse {
 
 pub fn build_reqwest_client() -> ClientWithMiddleware {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
-    ClientBuilder::new(Client::new())
+    // Keep shared HTTP clients on Rustls when LND enables native TLS support.
+    let client = Client::builder()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build the Rustls HTTP client");
+    ClientBuilder::new(client)
         .with(LoggingMiddleware)
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
         .build()

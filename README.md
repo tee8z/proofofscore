@@ -81,6 +81,11 @@ Prize payment states: `pending` → `paying` → `paid` or `failed` (retryable).
 
 ## Setup
 
+Linux source builds require OpenSSL development headers and `pkg-config`.
+The Nix development shell supplies these dependencies.
+Release archives statically link checksum-pinned OpenSSL 3.5.9 LTS through `scripts/build-release-openssl.sh`.
+LND connections use native TLS with certificate and hostname verification; other HTTP clients use Rustls.
+
 ```bash
 # Build
 just build-all           # cargo + WASM
