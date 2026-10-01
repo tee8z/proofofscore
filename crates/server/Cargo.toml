@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 repository = "https://github.com/tee8z/5day4cast"
 
@@ -26,10 +26,10 @@ hyper = "1.4.0"
 log = "0.4.18"
 nostr-sdk = { version = "0.38.0" }
 prometheus = { version = "0.13", default-features = false }
-openssl = { version = "0.10", features = ["vendored"] }
 pem-rfc7468 = { version = "0.7.0", features = ["alloc"] }
 rand = "0.8.5"
 sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
 reqwest-middleware = { version = "0.3.3", features = ["json", "rustls-tls"] }
 reqwest-retry = { version = "0.6.1" }
 serde = { version = "1.0.188", features = ["derive"] }
@@ -54,7 +54,7 @@ maud = { version = "0.26", features = ["axum"] }
 game_engine = { path = "../game_engine" }
 
 [package.metadata.cargo-machete]
-ignored = ["openssl", "minify-js", "walkdir", "sha2"]
+ignored = ["minify-js", "walkdir", "sha2"]
 
 [build-dependencies]
 minify-js = "0.6"

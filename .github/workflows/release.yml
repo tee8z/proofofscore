@@ -17,6 +17,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/package-release.sh
+      - scripts/build-release-openssl.sh
   workflow_dispatch:
     inputs:
       dry_run:
@@ -154,13 +155,18 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}-openssl-${{ hashFiles('scripts/build-release-openssl.sh') }}
           save-if: ${{ needs.prepare-release.outputs.warm == 'true' }}
-      # SQLite is bundled and OpenSSL vendored, so the executable needs only
-      # the C runtime.
+      # Pin a patched OpenSSL source independently of crates.io's release lag.
+      # SQLite and OpenSSL are linked statically; only the C runtime is needed.
+      - name: Build verified static OpenSSL
+        run: bash scripts/build-release-openssl.sh "$RUNNER_TEMP/release-openssl"
       - name: Build the locked release server
         env:
           TARGET: ${{ matrix.target }}
+          OPENSSL_NO_VENDOR: "1"
+          OPENSSL_STATIC: "1"
+          OPENSSL_DIR: ${{ runner.temp }}/release-openssl
         run: cargo build --release --locked --target "$TARGET" --bin server
       - name: Stage the server, its bundled assets, and migrations
         env:

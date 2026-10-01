@@ -23,6 +23,21 @@ if [ "$#" -ne 8 ]; then
 fi
 version=$1 system=$2 revision=$3 server=$4 static=$5 migrations=$6 ui_pkg=$7 output=$8
 
+verify_release_tls() {
+  local needed
+  needed=$(objdump -p "$server" | awk '$1 == "NEEDED" { print $2 }')
+  if grep -Eq '^lib(ssl|crypto)\.so' <<< "$needed"; then
+    echo "Release server must link OpenSSL statically" >&2
+    exit 1
+  fi
+  if ! LC_ALL=C strings "$server" | grep -Fx 'OpenSSL 3.5.9 29 Sep 2026'; then
+    echo "Release server does not contain the pinned OpenSSL version" >&2
+    exit 1
+  fi
+}
+
+verify_release_tls
+
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "bad version: $version" >&2; exit 1; }
 case $system in
   x86_64-linux) machine="x86-64" ;;
