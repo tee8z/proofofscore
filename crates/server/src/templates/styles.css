@@ -20,6 +20,7 @@ body {
 
 /* Navigation bar */
 .nav-bar {
+    box-sizing: border-box;
     width: 100%;
     max-width: 980px;
     margin: 0 auto;
@@ -33,6 +34,8 @@ body {
 
 .nav-bar-left {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
     gap: 10px;
     align-items: center;
 }
@@ -543,7 +546,7 @@ input[type="password"] {
     }
 
     .container {
-        padding: 4px;
+        padding: 8px;
     }
 
     /* Maximize game viewport — remove container border/padding */

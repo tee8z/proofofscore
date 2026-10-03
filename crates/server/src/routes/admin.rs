@@ -151,6 +151,12 @@ pub async fn admin_dashboard(
 <title>Proof of Score Admin</title>
 <style>
 body {{ background: #1a1a2e; color: #e0e0e0; font-family: monospace; padding: 20px; margin: 0; }}
+* {{ box-sizing: border-box; }}
+.table-scroll {{ max-width: 100%; overflow-x: auto; }}
+.ban-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }}
+.ban-grid > div {{ min-width: 0; }}
+input {{ max-width: 100%; }}
+@media (max-width: 640px) {{ .ban-grid {{ grid-template-columns: 1fr; }} }}
 h1 {{ color: #00ff88; }}
 h2 {{ color: #ffaa00; border-bottom: 1px solid #333; padding-bottom: 5px; }}
 .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }}
@@ -186,25 +192,25 @@ td:hover {{ overflow: visible; white-space: normal; word-break: break-all; }}
 </div>
 
 <h2>Today's Top Scores</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><th>Player</th><th>Score</th><th>Level</th><th>Time</th><th>When</th></tr>
 {top_scores_html}
-</table>
+</table></div>
 
 <h2>Recent Bot Flags</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><th>Player</th><th>Score</th><th>Flags</th><th>When</th></tr>
 {flags_html}
-</table>
+</table></div>
 
 <h2>Suspicious IPs (multiple accounts)</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><th>IP</th><th>Accounts</th><th>Games</th></tr>
 {ips_html}
-</table>
+</table></div>
 
 <h2>Ban Management</h2>
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+<div class="ban-grid">
   <div>
     <h3 style="color: #ff4444;">Ban IP</h3>
     <form method="POST" action="/admin/ban-ip" style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -212,10 +218,10 @@ td:hover {{ overflow: visible; white-space: normal; word-break: break-all; }}
       <input name="reason" placeholder="Reason" style="background: #16213e; color: #fff; border: 1px solid #333; padding: 6px; font-family: monospace;">
       <button type="submit" style="background: #ff4444; color: #fff; border: none; padding: 6px 12px; cursor: pointer; font-family: monospace;">Ban</button>
     </form>
-    <table style="margin-top: 10px;">
+    <div class="table-scroll"><table style="margin-top: 10px;">
       <tr><th>IP</th><th>Reason</th><th>When</th><th></th></tr>
       {banned_ips_html}
-    </table>
+    </table></div>
   </div>
   <div>
     <h3 style="color: #ff4444;">Ban User</h3>
@@ -224,32 +230,32 @@ td:hover {{ overflow: visible; white-space: normal; word-break: break-all; }}
       <input name="reason" placeholder="Reason" style="background: #16213e; color: #fff; border: 1px solid #333; padding: 6px; font-family: monospace;">
       <button type="submit" style="background: #ff4444; color: #fff; border: none; padding: 6px 12px; cursor: pointer; font-family: monospace;">Ban</button>
     </form>
-    <table style="margin-top: 10px;">
+    <div class="table-scroll"><table style="margin-top: 10px;">
       <tr><th>ID</th><th>Username</th><th>Reason</th><th></th></tr>
       {banned_users_html}
-    </table>
+    </table></div>
   </div>
 </div>
 
 <h2>Today's Entry Payments</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><th>Player</th><th>Amount</th><th>Status</th><th>Payment Hash</th><th>When</th></tr>
 {entries_html}
-</table>
+</table></div>
 
 <h2>Recent Prize Payouts</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><th>Date</th><th>Winner</th><th>Score</th><th>Prize (sats)</th><th>Status</th><th>Payment Hash</th></tr>
 {payouts_html}
-</table>
+</table></div>
 
 <h2>Config</h2>
-<table>
+<div class="table-scroll"><table>
 <tr><td>Entry fee</td><td>{entry_fee} sats</td></tr>
 <tr><td>Prize pool</td><td>{prize_pct}%</td></tr>
 <tr><td>Competition window</td><td>{start} UTC + {duration}</td></tr>
 <tr><td>Bot detection</td><td>{bot_status}</td></tr>
-</table>
+</table></div>
 
 <p style="color:#555; margin-top:40px;">Auto-refresh: <a href="/admin" style="color:#00ff88;">reload</a></p>
 </body>
