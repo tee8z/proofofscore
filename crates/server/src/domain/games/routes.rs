@@ -35,7 +35,12 @@ fn extract_client_ip(headers: &HeaderMap, addr: SocketAddr) -> String {
     addr.ip().to_string()
 }
 
-use crate::{map_error, nostr_extractor::NostrAuth, startup::AppState};
+use crate::{
+    map_error,
+    metrics::{metrics, SCORE_REJECTED},
+    nostr_extractor::NostrAuth,
+    startup::AppState,
+};
 
 use super::bot_detection::{
     analyze_frame_timings, analyze_ip_activity, analyze_server_timing, cross_reference_timings,
@@ -43,8 +48,8 @@ use super::bot_detection::{
 };
 use super::store::GameConfigResponse;
 use super::store::ScoreMetadata;
+use super::verify::{check_encoded_length, ReplayError};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigQuery {
@@ -428,10 +433,6 @@ pub async fn submit_score(
 ) -> Result<impl IntoResponse, Response> {
     let pubkey = auth.pubkey.to_string();
     info!("Score submission from pubkey: {}", pubkey);
-    let replay = state
-        .replay_verifier
-        .admit()
-        .map_err(IntoResponse::into_response)?;
 
     // Find user
     let user = match state.user_store.find_by_pubkey(pubkey).await {
@@ -456,23 +457,6 @@ pub async fn submit_score(
         return Err((StatusCode::FORBIDDEN, "Session belongs to a different user").into_response());
     }
 
-    // Decode input log from base64
-    let input_bytes = BASE64.decode(&submission.input_log).map_err(|e| {
-        error!("Invalid base64 input_log: {}", e);
-        (StatusCode::BAD_REQUEST, "Invalid input_log encoding").into_response()
-    })?;
-
-    // Verify input hash
-    let computed_hash = hex::encode(Sha256::digest(&input_bytes));
-    if computed_hash != submission.input_hash {
-        error!(
-            "Input hash mismatch: computed={}, submitted={}",
-            computed_hash, submission.input_hash
-        );
-        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
-        return Err((StatusCode::BAD_REQUEST, "Input hash mismatch").into_response());
-    }
-
     // Get seed and engine config from session
     let seed_hex = session.seed.as_deref().unwrap_or("");
     let seed = u64::from_str_radix(seed_hex, 16).map_err(|_| {
@@ -487,76 +471,16 @@ pub async fn submit_score(
             (StatusCode::INTERNAL_SERVER_ERROR, "Invalid session config").into_response()
         })?;
 
-    // Replay and verify
-    let result = replay
-        .verify(
-            seed,
-            engine_config,
-            input_bytes.clone(),
-            submission.frames,
-            submission.score as u32,
-        )
-        .await
+    check_encoded_length(&submission.input_log, submission.frames)
         .map_err(IntoResponse::into_response)?;
 
-    if !result.verified {
-        error!(
-            "Score verification failed: claimed={}, replayed={}, frames={}/{}",
-            submission.score, result.score, submission.frames, result.frames
-        );
-        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
-        return Err((StatusCode::BAD_REQUEST, "Score verification failed").into_response());
-    }
-
-    info!(
-        "Score verified: score={}, level={}, frames={}",
-        result.score, result.level, result.frames
-    );
-
-    // Bot detection checks + signal collection for dashboard
+    // Bot detection checks + signal collection for dashboard. The server-side
+    // timing checks need no replay, so they run before admission.
     let mut bot_flags: Vec<String> = Vec::new();
-    let mut ip_session_count: Option<i64> = None;
-    let mut ip_account_count: Option<i64> = None;
     let mut server_elapsed: f64 = 0.0;
     let mut timing_signals = None;
 
     if state.settings.bot_detection.enabled {
-        // IP-based analysis
-        if let Some(ip) = &session.client_ip {
-            match state.game_store.get_ip_activity(ip).await {
-                Ok((sc, ac)) => {
-                    ip_session_count = Some(sc);
-                    ip_account_count = Some(ac);
-                    let ip_result = analyze_ip_activity(
-                        &IpAnalysis {
-                            session_count: sc,
-                            account_count: ac,
-                        },
-                        &state.settings.bot_detection,
-                    );
-                    if ip_result.reject {
-                        warn!(
-                            "Bot detection rejected score from IP {}: {:?}",
-                            ip, ip_result.flags
-                        );
-                        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
-                        return Err((StatusCode::FORBIDDEN, "Submission rejected").into_response());
-                    }
-                    bot_flags.extend(ip_result.flags);
-                }
-                Err(e) => warn!("Failed to check IP activity: {}", e),
-            }
-        }
-
-        // Frame timing analysis (client-reported, fakeable)
-        if let Some(ref timings_b64) = submission.frame_timings {
-            if let Ok(timing_bytes) = BASE64.decode(timings_b64) {
-                let timing_result =
-                    analyze_frame_timings(&timing_bytes, &state.settings.bot_detection);
-                bot_flags.extend(timing_result.flags);
-            }
-        }
-
         // Server-side timing check (unforgeable — uses server timestamps)
         if let Ok(session_time) = time::OffsetDateTime::parse(
             &session.start_time,
@@ -596,6 +520,85 @@ pub async fn submit_score(
                     }
                     bot_flags.extend(xref.flags);
                 }
+            }
+        }
+    }
+
+    // Nothing above writes, so a busy rejection is always safe to retry.
+    let replay = state
+        .replay_verifier
+        .admit()
+        .map_err(IntoResponse::into_response)?;
+
+    // Decode, hash, replay and verify
+    let (input_bytes, result) = replay
+        .verify(
+            seed,
+            engine_config,
+            submission.input_log,
+            submission.input_hash.clone(),
+            submission.frames,
+            submission.score as u32,
+        )
+        .await
+        .map_err(|e| {
+            if e == ReplayError::HashMismatch {
+                metrics().score_submitted(SCORE_REJECTED);
+            }
+            e.into_response()
+        })?;
+
+    if !result.verified {
+        error!(
+            "Score verification failed: claimed={}, replayed={}, frames={}/{}",
+            submission.score, result.score, submission.frames, result.frames
+        );
+        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
+        return Err((StatusCode::BAD_REQUEST, "Score verification failed").into_response());
+    }
+
+    info!(
+        "Score verified: score={}, level={}, frames={}",
+        result.score, result.level, result.frames
+    );
+
+    let mut ip_session_count: Option<i64> = None;
+    let mut ip_account_count: Option<i64> = None;
+
+    if state.settings.bot_detection.enabled {
+        // IP-based analysis
+        if let Some(ip) = &session.client_ip {
+            match state.game_store.get_ip_activity(ip).await {
+                Ok((sc, ac)) => {
+                    ip_session_count = Some(sc);
+                    ip_account_count = Some(ac);
+                    let ip_result = analyze_ip_activity(
+                        &IpAnalysis {
+                            session_count: sc,
+                            account_count: ac,
+                        },
+                        &state.settings.bot_detection,
+                    );
+                    if ip_result.reject {
+                        warn!(
+                            "Bot detection rejected score from IP {}: {:?}",
+                            ip, ip_result.flags
+                        );
+                        crate::metrics::metrics().score_submitted(crate::metrics::SCORE_REJECTED);
+                        return Err((StatusCode::FORBIDDEN, "Submission rejected").into_response());
+                    }
+                    bot_flags.extend(ip_result.flags);
+                }
+                Err(e) => warn!("Failed to check IP activity: {}", e),
+            }
+        }
+
+        // Frame timing analysis (client-reported, fakeable)
+        if let Some(ref timings_b64) = submission.frame_timings {
+            if let Ok(timing_bytes) = BASE64.decode(timings_b64) {
+                let timing_result =
+                    analyze_frame_timings(&timing_bytes, &state.settings.bot_detection);
+                bot_flags.extend(timing_result.flags);
             }
         }
 
@@ -796,4 +799,198 @@ pub async fn get_competition_info(State(state): State<Arc<AppState>>) -> impl In
             "prize_pool_pct": comp.prize_pool_pct,
         })),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use nostr_sdk::Keys;
+    use reqwest_middleware::reqwest;
+    use serde_json::Value;
+    use sha2::{Digest, Sha256};
+    use sqlx::{migrate::Migrator, sqlite::SqlitePoolOptions, Pool, Sqlite};
+    use tokio::{net::TcpListener, task::JoinHandle};
+    use tower_http::services::ServeDir;
+
+    use super::*;
+    use crate::{
+        app, build_reqwest_client, domain::verify::verify_replay,
+        nostr_extractor::create_auth_event, GameSession, GameStore, LedgerService, LedgerStore,
+        LightningProvider, LightningService, PaymentStore, Settings, UserStore,
+    };
+
+    async fn test_state() -> AppState {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+        Migrator::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations"))
+            .await
+            .expect("migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        AppState {
+            settings: Settings::default(),
+            ui_dir: String::new(),
+            remote_url: String::new(),
+            user_store: UserStore::new(pool.clone()),
+            game_store: GameStore::new(pool.clone()),
+            payment_store: PaymentStore::new(pool.clone()),
+            lightning_service: LightningService::new(
+                build_reqwest_client(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
+            lightning_provider: LightningProvider::Stub,
+            ledger_service: LedgerService::new(Keys::generate(), LedgerStore::new(pool)),
+            replay_verifier: Default::default(),
+        }
+    }
+
+    /// Registers a player and starts a game session for them.
+    async fn player(state: &AppState) -> (Keys, GameSession) {
+        let keys = Keys::generate();
+        let user_id = sqlx::query("INSERT INTO users (nostr_pubkey, username) VALUES (?, ?)")
+            .bind(keys.public_key().to_string())
+            .bind("player")
+            .execute(&state.game_store.get_pool())
+            .await
+            .expect("insert user")
+            .last_insert_rowid();
+        let session = state
+            .game_store
+            .create_session(user_id, "127.0.0.1")
+            .await
+            .expect("create session");
+        (keys, session)
+    }
+
+    /// A submission whose input log replays to its claimed score.
+    fn valid_submission(session: &GameSession) -> Value {
+        let input_log = [0u8, 0];
+        let frames = 3;
+        let seed = u64::from_str_radix(session.seed.as_deref().unwrap(), 16).unwrap();
+        let config = serde_json::from_str(session.engine_config.as_deref().unwrap()).unwrap();
+        let score = verify_replay(seed, &config, &input_log, frames, 0)
+            .unwrap()
+            .score;
+        json!({
+            "score": score,
+            "level": 1,
+            "play_time": 0,
+            "session_id": session.session_id,
+            "input_log": BASE64.encode(input_log),
+            "input_hash": hex::encode(Sha256::digest(input_log)),
+            "frames": frames,
+        })
+    }
+
+    async fn serve(state: AppState) -> (SocketAddr, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local address");
+        let router = app(state, ServeDir::new("."));
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .expect("serve");
+        });
+        (addr, server)
+    }
+
+    async fn post_score(addr: SocketAddr, keys: &Keys, submission: &Value) -> reqwest::Response {
+        let url = format!("http://{addr}/api/v1/game/score");
+        let event = create_auth_event("POST", &url, None, keys).await;
+        reqwest::Client::new()
+            .post(url)
+            .header(
+                "authorization",
+                format!(
+                    "Nostr {}",
+                    BASE64.encode(serde_json::to_string(&event).unwrap())
+                ),
+            )
+            .json(submission)
+            .send()
+            .await
+            .expect("score request")
+    }
+
+    async fn rows(pool: &Pool<Sqlite>, table: &str) -> i64 {
+        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(pool)
+            .await
+            .expect("count rows")
+    }
+
+    #[tokio::test]
+    async fn busy_verification_answers_503_before_writing_anything() {
+        let state = test_state().await;
+        let pool = state.game_store.get_pool();
+        let verifier = state.replay_verifier.clone();
+        let (keys, session) = player(&state).await;
+        let submission = valid_submission(&session);
+        let (addr, server) = serve(state).await;
+
+        let slots = [verifier.admit().unwrap(), verifier.admit().unwrap()];
+        let busy = post_score(addr, &keys, &submission).await;
+        assert_eq!(busy.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(busy.headers()["retry-after"], "1");
+        for table in ["scores", "game_input_logs", "score_metadata"] {
+            assert_eq!(rows(&pool, table).await, 0, "{table}");
+        }
+
+        // Retrying the same submission once a slot frees up saves it.
+        drop(slots);
+        let saved = post_score(addr, &keys, &submission).await;
+        assert_eq!(saved.status(), StatusCode::CREATED);
+        assert_eq!(rows(&pool, "scores").await, 1);
+        assert_eq!(rows(&pool, "game_input_logs").await, 1);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn invalid_submissions_get_their_4xx_while_verification_is_busy() {
+        let state = test_state().await;
+        let pool = state.game_store.get_pool();
+        let verifier = state.replay_verifier.clone();
+        let (keys, session) = player(&state).await;
+        let (_, other_session) = player(&state).await;
+        let (addr, server) = serve(state).await;
+        let _slots = [verifier.admit().unwrap(), verifier.admit().unwrap()];
+
+        let mut unknown_session = valid_submission(&session);
+        unknown_session["session_id"] = json!("session_missing");
+        let mut bad_length = valid_submission(&session);
+        bad_length["frames"] = json!(1_000);
+        for (submission, status, message) in [
+            (unknown_session, StatusCode::NOT_FOUND, "Session not found"),
+            (
+                valid_submission(&other_session),
+                StatusCode::FORBIDDEN,
+                "Session belongs to a different user",
+            ),
+            (
+                bad_length,
+                StatusCode::BAD_REQUEST,
+                "Replay frame count or input length is invalid",
+            ),
+        ] {
+            let response = post_score(addr, &keys, &submission).await;
+            assert_eq!(response.status(), status, "{message}");
+            assert_eq!(response.text().await.unwrap(), message);
+        }
+        for table in ["scores", "game_input_logs", "score_metadata"] {
+            assert_eq!(rows(&pool, table).await, 0, "{table}");
+        }
+        server.abort();
+    }
 }

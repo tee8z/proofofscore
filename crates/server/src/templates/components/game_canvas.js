@@ -484,13 +484,20 @@ async function handleGameOver(state) {
 
 // Retry only an explicit busy response: network failures and other errors can
 // be ambiguous after a write, so they must not automatically resubmit a score.
+// Busy retries wait at least Retry-After and back off exponentially with jitter,
+// so waiting players spread out, until about eleven seconds have passed.
 async function postScoreWithRetry(url, payload) {
+    const budgetMs = 11000;
+    let waitedMs = 0;
     for (let attempt = 0; ; attempt++) {
         const response = await window.gameAuth.post(url, payload);
-        if (response.status !== 503 || attempt >= 11) return response;
-        const seconds = Number(response.headers.get("Retry-After"));
-        const delay = Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 5) : 1;
-        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+        const remainingMs = budgetMs - waitedMs;
+        if (response.status !== 503 || remainingMs <= 0) return response;
+        const retryAfterMs = (Number(response.headers.get("Retry-After")) || 0) * 1000;
+        const backoffMs = Math.min(4000, 1000 * 2 ** attempt) * (0.5 + Math.random() / 2);
+        const delayMs = Math.round(Math.min(Math.max(retryAfterMs, backoffMs), remainingMs));
+        waitedMs += delayMs;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 }
 
