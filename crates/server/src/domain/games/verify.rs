@@ -5,8 +5,16 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use game_engine::{config::GameConfig, engine::replay_iter, state::input_frames};
+use log::error;
+use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+use crate::metrics::{
+    metrics, REPLAY_BUSY, REPLAY_HASH_MISMATCH, REPLAY_INVALID_ENCODING, REPLAY_INVALID_INPUT,
+    REPLAY_TIMED_OUT, REPLAY_WORKER_FAILED,
+};
 
 // About 1.5 MB encoded, below the HTTP JSON body's 2 MiB limit even after
 // base64 encoding. The bound accommodates over thirteen hours at 60 fps.
@@ -17,9 +25,27 @@ const REPLAY_WORKERS: usize = 2;
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReplayError {
     InvalidInput,
+    InvalidEncoding,
+    HashMismatch,
     Busy,
     TimedOut,
     WorkerFailed,
+}
+
+impl ReplayError {
+    /// Counts this rejection in the exported metrics.
+    fn counted(self) -> Self {
+        let reason = match self {
+            Self::InvalidInput => REPLAY_INVALID_INPUT,
+            Self::InvalidEncoding => REPLAY_INVALID_ENCODING,
+            Self::HashMismatch => REPLAY_HASH_MISMATCH,
+            Self::Busy => REPLAY_BUSY,
+            Self::TimedOut => REPLAY_TIMED_OUT,
+            Self::WorkerFailed => REPLAY_WORKER_FAILED,
+        };
+        metrics().replay_rejected(reason);
+        self
+    }
 }
 
 impl IntoResponse for ReplayError {
@@ -30,6 +56,10 @@ impl IntoResponse for ReplayError {
                 "Replay frame count or input length is invalid",
             )
                 .into_response(),
+            Self::InvalidEncoding => {
+                (StatusCode::BAD_REQUEST, "Invalid input_log encoding").into_response()
+            }
+            Self::HashMismatch => (StatusCode::BAD_REQUEST, "Input hash mismatch").into_response(),
             Self::Busy => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 [("retry-after", "1")],
@@ -67,8 +97,26 @@ impl ReplayVerifier {
             .clone()
             .try_acquire_owned()
             .map(ReplayPermit)
-            .map_err(|_| ReplayError::Busy)
+            .map_err(|_| ReplayError::Busy.counted())
     }
+}
+
+/// Rejects a base64 input log whose length cannot hold `frame_count` frames,
+/// without decoding it, so the submission never takes a verification slot.
+/// The standard engine requires canonical padding, which makes the encoded
+/// length of a valid log exact.
+pub fn check_encoded_length(input_log: &str, frame_count: u32) -> Result<(), ReplayError> {
+    let expected = input_log_len(frame_count).and_then(|len| base64::encoded_len(len, true));
+    if expected != Some(input_log.len()) {
+        return Err(ReplayError::InvalidInput.counted());
+    }
+    Ok(())
+}
+
+/// The bytes that hold `frame_count` frames at two frames per byte, or `None`
+/// above the frame cap.
+fn input_log_len(frame_count: u32) -> Option<usize> {
+    (frame_count <= MAX_REPLAY_FRAMES).then_some((frame_count as usize).div_ceil(2))
 }
 
 impl ReplayPermit {
@@ -85,17 +133,46 @@ impl ReplayPermit {
         .map_err(|_| ReplayError::WorkerFailed)
     }
 
+    /// Decodes, hashes and replays a submitted base64 input log on a blocking
+    /// worker. Returns the decoded log with the result, so the caller can
+    /// store it without keeping a second copy.
     pub async fn verify(
         self,
         seed: u64,
         config: GameConfig,
-        input_log: Vec<u8>,
+        input_log: String,
+        input_hash: String,
         frame_count: u32,
         claimed_score: u32,
-    ) -> Result<ReplayResult, ReplayError> {
-        self.run(move || verify_replay(seed, &config, &input_log, frame_count, claimed_score))
-            .await?
+    ) -> Result<(Vec<u8>, ReplayResult), ReplayError> {
+        self.run(move || -> Result<_, ReplayError> {
+            let _timer = metrics().replay_verification_seconds.start_timer();
+            let input_log = decode_input_log(input_log, &input_hash)?;
+            let result = verify_replay(seed, &config, &input_log, frame_count, claimed_score)?;
+            Ok((input_log, result))
+        })
+        .await
+        .and_then(|verified| verified)
+        .map_err(ReplayError::counted)
     }
+}
+
+/// Decodes a base64 input log and checks its SHA-256 hex digest. Takes the
+/// encoded log by value so it is freed before the replay starts.
+fn decode_input_log(encoded: String, input_hash: &str) -> Result<Vec<u8>, ReplayError> {
+    let input_log = BASE64.decode(encoded).map_err(|e| {
+        error!("Invalid base64 input_log: {}", e);
+        ReplayError::InvalidEncoding
+    })?;
+    let computed_hash = hex::encode(Sha256::digest(&input_log));
+    if computed_hash != input_hash {
+        error!(
+            "Input hash mismatch: computed={}, submitted={}",
+            computed_hash, input_hash
+        );
+        return Err(ReplayError::HashMismatch);
+    }
+    Ok(input_log)
 }
 
 #[derive(Debug)]
@@ -132,7 +209,7 @@ fn verify_with_budget(
     claimed_score: u32,
     budget: Duration,
 ) -> Result<ReplayResult, ReplayError> {
-    if frame_count > MAX_REPLAY_FRAMES || input_log.len() != (frame_count as usize).div_ceil(2) {
+    if input_log_len(frame_count) != Some(input_log.len()) {
         return Err(ReplayError::InvalidInput);
     }
     let started = Instant::now();
@@ -164,10 +241,19 @@ fn verify_with_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
     use game_engine::{
         engine::replay,
         state::{encode_inputs, FrameInput},
     };
+
+    /// The base64 input log and SHA-256 hex digest a client submits.
+    fn encoded(input_log: &[u8]) -> (String, String) {
+        (
+            BASE64.encode(input_log),
+            hex::encode(Sha256::digest(input_log)),
+        )
+    }
 
     #[test]
     fn rejects_impossible_lengths_before_replay() {
@@ -194,6 +280,72 @@ mod tests {
             ),
             Err(ReplayError::InvalidInput)
         ));
+    }
+
+    #[test]
+    fn encoded_length_check_rejects_logs_that_cannot_hold_the_frames() {
+        for frames in [0, 1, 2, 3, 4, 5, 1_001, MAX_REPLAY_FRAMES] {
+            let input_log = BASE64.encode(vec![0u8; (frames as usize).div_ceil(2)]);
+            assert_eq!(check_encoded_length(&input_log, frames), Ok(()), "{frames}");
+            let longer = format!("{input_log}A");
+            assert_eq!(
+                check_encoded_length(&longer, frames),
+                Err(ReplayError::InvalidInput),
+                "{frames}"
+            );
+            if let Some(shorter) = input_log.get(1..) {
+                assert_eq!(
+                    check_encoded_length(shorter, frames),
+                    Err(ReplayError::InvalidInput),
+                    "{frames}"
+                );
+            }
+        }
+        let over_limit = MAX_REPLAY_FRAMES + 1;
+        let input_log = BASE64.encode(vec![0u8; (over_limit as usize).div_ceil(2)]);
+        assert_eq!(
+            check_encoded_length(&input_log, over_limit),
+            Err(ReplayError::InvalidInput)
+        );
+    }
+
+    #[tokio::test]
+    async fn undecodable_or_mismatched_logs_keep_their_400_responses() {
+        let verifier = ReplayVerifier::default();
+        let (input_log, input_hash) = encoded(&[0, 0]);
+        for (input_log, input_hash, error, message) in [
+            (
+                "AA*=".to_string(),
+                input_hash,
+                ReplayError::InvalidEncoding,
+                "Invalid input_log encoding",
+            ),
+            (
+                input_log,
+                "0".repeat(64),
+                ReplayError::HashMismatch,
+                "Input hash mismatch",
+            ),
+        ] {
+            let rejected = verifier
+                .admit()
+                .unwrap()
+                .verify(
+                    42,
+                    GameConfig::default_config(),
+                    input_log,
+                    input_hash,
+                    3,
+                    0,
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(rejected, error);
+            let response = rejected.into_response();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(body, message);
+        }
     }
 
     #[test]
@@ -231,28 +383,36 @@ mod tests {
         caller.abort();
         assert!(caller.await.unwrap_err().is_cancelled());
         assert!(matches!(verifier.admit(), Err(ReplayError::Busy)));
-        release.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while verifier.0.available_permits() != 1 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .unwrap();
         assert!(matches!(
             second.run(|| panic!("test worker failure")).await,
             Err(ReplayError::WorkerFailed)
         ));
-        assert_eq!(verifier.0.available_permits(), REPLAY_WORKERS);
-        assert!(
-            verifier
-                .admit()
-                .unwrap()
-                .verify(42, GameConfig::default_config(), vec![0, 0], 3, 0)
-                .await
-                .unwrap()
-                .verified
-        );
+        release.send(()).unwrap();
+        // Both slots come back: the failed worker's and the cancelled caller's.
+        let slots = tokio::time::timeout(
+            Duration::from_secs(5),
+            verifier.0.clone().acquire_many_owned(REPLAY_WORKERS as u32),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        drop(slots);
+        let (input_log, input_hash) = encoded(&[0, 0]);
+        let (decoded, result) = verifier
+            .admit()
+            .unwrap()
+            .verify(
+                42,
+                GameConfig::default_config(),
+                input_log,
+                input_hash,
+                3,
+                0,
+            )
+            .await
+            .unwrap();
+        assert_eq!(decoded, [0, 0]);
+        assert!(result.verified);
     }
 
     #[test]

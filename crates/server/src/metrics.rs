@@ -20,7 +20,8 @@ use axum::{
 };
 use log::{error, info, warn};
 use prometheus::{
-    Encoder, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder,
+    Encoder, Histogram, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
+    TextEncoder,
 };
 use sqlx::{Pool, Row, Sqlite};
 use tokio::{net::TcpListener, sync::Mutex};
@@ -45,6 +46,15 @@ pub const RESULT_ERROR: &str = "error";
 pub const PAYOUT_SUCCEEDED: &str = "succeeded";
 pub const PAYOUT_FAILED: &str = "failed";
 
+/// Reason labels for submissions that replay verification refused or could
+/// not finish.
+pub const REPLAY_BUSY: &str = "busy";
+pub const REPLAY_INVALID_INPUT: &str = "invalid_input";
+pub const REPLAY_INVALID_ENCODING: &str = "invalid_encoding";
+pub const REPLAY_HASH_MISMATCH: &str = "hash_mismatch";
+pub const REPLAY_TIMED_OUT: &str = "timed_out";
+pub const REPLAY_WORKER_FAILED: &str = "worker_failed";
+
 /// Every metric the server exports, registered in its own registry.
 pub struct Metrics {
     registry: Registry,
@@ -54,6 +64,8 @@ pub struct Metrics {
     pub invoices_paid: IntCounter,
     payouts: IntCounterVec,
     pub lnd_invoice_stream_errors: IntCounter,
+    replay_rejections: IntCounterVec,
+    pub replay_verification_seconds: Histogram,
     users: IntGauge,
     sessions_today: IntGauge,
     scores_today: IntGauge,
@@ -99,6 +111,20 @@ impl Metrics {
             "lnd_invoice_stream_errors_total",
             "Times the LND invoice subscription ended or failed and was restarted.",
         ))?;
+        let replay_rejections = IntCounterVec::new(
+            opts(
+                "replay_rejections_total",
+                "Score submissions refused or failed by replay verification, by reason.",
+            ),
+            &["reason"],
+        )?;
+        let replay_verification_seconds = Histogram::with_opts(
+            opts(
+                "replay_verification_seconds",
+                "Time to decode, hash and replay an admitted score submission.",
+            )
+            .into(),
+        )?;
         let build_info = IntGaugeVec::new(
             opts("build_info", "Build information; always 1."),
             &["version"],
@@ -125,6 +151,8 @@ impl Metrics {
         registry.register(Box::new(invoices_paid.clone()))?;
         registry.register(Box::new(payouts.clone()))?;
         registry.register(Box::new(lnd_invoice_stream_errors.clone()))?;
+        registry.register(Box::new(replay_rejections.clone()))?;
+        registry.register(Box::new(replay_verification_seconds.clone()))?;
         registry.register(Box::new(build_info.clone()))?;
         registry.register(Box::new(users.clone()))?;
         registry.register(Box::new(sessions_today.clone()))?;
@@ -142,6 +170,16 @@ impl Metrics {
         for result in [PAYOUT_SUCCEEDED, PAYOUT_FAILED] {
             payouts.with_label_values(&[result]);
         }
+        for reason in [
+            REPLAY_BUSY,
+            REPLAY_INVALID_INPUT,
+            REPLAY_INVALID_ENCODING,
+            REPLAY_HASH_MISMATCH,
+            REPLAY_TIMED_OUT,
+            REPLAY_WORKER_FAILED,
+        ] {
+            replay_rejections.with_label_values(&[reason]);
+        }
         build_info
             .with_label_values(&[env!("CARGO_PKG_VERSION")])
             .set(1);
@@ -154,6 +192,8 @@ impl Metrics {
             invoices_paid,
             payouts,
             lnd_invoice_stream_errors,
+            replay_rejections,
+            replay_verification_seconds,
             users,
             sessions_today,
             scores_today,
@@ -175,6 +215,12 @@ impl Metrics {
     /// Count a prize payout attempt with one of the `PAYOUT_*` outcomes.
     pub fn payout(&self, result: &str) {
         self.payouts.with_label_values(&[result]).inc();
+    }
+
+    /// Count a submission refused by replay verification with one of the
+    /// `REPLAY_*` reasons.
+    pub fn replay_rejected(&self, reason: &str) {
+        self.replay_rejections.with_label_values(&[reason]).inc();
     }
 
     /// Render every registered family in the Prometheus text format.
@@ -356,6 +402,13 @@ mod tests {
         "proofofscore_payouts_total{result=\"succeeded\"}",
         "proofofscore_payouts_total{result=\"failed\"}",
         "proofofscore_lnd_invoice_stream_errors_total",
+        "proofofscore_replay_rejections_total{reason=\"busy\"}",
+        "proofofscore_replay_rejections_total{reason=\"invalid_input\"}",
+        "proofofscore_replay_rejections_total{reason=\"invalid_encoding\"}",
+        "proofofscore_replay_rejections_total{reason=\"hash_mismatch\"}",
+        "proofofscore_replay_rejections_total{reason=\"timed_out\"}",
+        "proofofscore_replay_rejections_total{reason=\"worker_failed\"}",
+        "proofofscore_replay_verification_seconds_count",
         "proofofscore_users",
         "proofofscore_sessions_today",
         "proofofscore_scores_today",

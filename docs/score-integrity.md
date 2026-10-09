@@ -30,7 +30,12 @@ The server decodes frames incrementally instead of allocating a vector from the 
 Two submissions can hold verification permits at once, with no waiting queue.
 Additional submissions receive HTTP 503 with `Retry-After: 1`.
 Verification runs on blocking workers, and a disconnected caller retains its permit until its worker finishes.
-The browser retries explicit busy responses up to eleven times, keeping the original session and input log.
+Before taking a permit, the server checks the session and its owner, the encoded input-log length against the frame count,
+and, with bot detection enabled, the server-side timing, so these rejections keep their 4xx status while verification is busy.
+Nothing is written before the permit is taken, so a 503 response is always safe to retry.
+The worker decodes the input log, checks its hash, and replays it.
+The browser retries explicit busy responses for about eleven seconds, keeping the original session and input log.
+Each retry waits at least `Retry-After`, with exponential backoff and jitter so waiting players spread out.
 If the service remains busy, the game-over dialog offers a Save Score Again button.
 Other errors and ambiguous network failures are not automatically resubmitted.
 
