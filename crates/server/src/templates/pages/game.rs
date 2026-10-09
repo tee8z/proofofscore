@@ -97,6 +97,8 @@ pub fn game_content(
                 div class="dialog-content" {
                     h2 class="nes-text is-error" { "GAME OVER" }
                     p { "Final Score: " span id="final-score" { "0" } }
+                    p id="scoreSubmissionStatus" role="status" {}
+                    button type="button" id="retry-score-button" class="nes-btn is-primary" style="display: none;" { "Save Score Again" }
                     p id="gameOverPlaysRemaining" class="nes-text is-success" style="display: none;" {}
                     div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;" {
                         button type="button" id="restart-button" class="nes-btn is-primary" {

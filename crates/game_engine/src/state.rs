@@ -162,17 +162,15 @@ pub fn encode_inputs(inputs: &[FrameInput]) -> Vec<u8> {
 
 /// Unpack bytes back into FrameInputs.
 pub fn decode_inputs(data: &[u8], frame_count: u32) -> Vec<FrameInput> {
-    let mut inputs = Vec::with_capacity(frame_count as usize);
-    for (i, &byte) in data.iter().enumerate() {
-        let frame_idx = i * 2;
-        if (frame_idx as u32) < frame_count {
-            inputs.push(nibble_to_input(byte & 0x0F));
-        }
-        if ((frame_idx + 1) as u32) < frame_count {
-            inputs.push(nibble_to_input(byte >> 4));
-        }
-    }
-    inputs
+    input_frames(data, frame_count).collect()
+}
+
+/// Decode only supplied frames, without reserving memory from a claimed count.
+/// Callers verifying a complete replay must first validate its encoded length.
+pub fn input_frames(data: &[u8], frame_count: u32) -> impl Iterator<Item = FrameInput> + '_ {
+    data.iter()
+        .flat_map(|byte| [nibble_to_input(byte & 0x0F), nibble_to_input(byte >> 4)])
+        .take(frame_count as usize)
 }
 
 fn input_to_nibble(input: &FrameInput) -> u8 {
@@ -194,6 +192,14 @@ fn nibble_to_input(nibble: u8) -> FrameInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claimed_frames_do_not_determine_allocation_size() {
+        let decoded = decode_inputs(&[0], u32::MAX);
+        assert_eq!(decoded.len(), 2);
+        assert!(decoded.capacity() < 16);
+        assert_eq!(input_frames(&[], u32::MAX).count(), 0);
+    }
 
     #[test]
     fn test_encode_decode_round_trip() {

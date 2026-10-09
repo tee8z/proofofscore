@@ -19,6 +19,26 @@ The engine uses fixed-point arithmetic (`Fixed` type, no floats) and a determini
 
 Input logs are compact: 4 bools per frame = 4 bits, 2 frames per byte. A 5-minute game at 60fps ≈ 9KB.
 
+### Verification resource limits
+
+The declared frame count must match the encoded byte length, rounded up for an odd final frame.
+The server accepts at most 3,000,000 frames, or approximately thirteen hours at 60 frames per second.
+This bounds the encoded log to 1.5 MB before base64 encoding; the existing HTTP body limit also applies.
+Invalid lengths and counts receive HTTP 400 before replay starts.
+
+The server decodes frames incrementally instead of allocating a vector from the declared count.
+Two submissions can hold verification permits at once, with no waiting queue.
+Additional submissions receive HTTP 503 with `Retry-After: 1`.
+Verification runs on blocking workers, and a disconnected caller retains its permit until its worker finishes.
+The browser retries explicit busy responses up to eleven times, keeping the original session and input log.
+If the service remains busy, the game-over dialog offers a Save Score Again button.
+Other errors and ambiguous network failures are not automatically resubmitted.
+
+A replay checks its ten-second work budget every 1,024 frames.
+Exceeding that budget returns HTTP 422, even if the partial score matches.
+This is a cooperative limit, so an individual engine tick can extend the deadline.
+Normal replay physics, score verification, and stored input-log formats are unchanged.
+
 ## What This Eliminates
 
 | Attack | Why It's Caught |
