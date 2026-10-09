@@ -103,6 +103,7 @@ pub struct AppState {
     /// New or migrated route handlers should prefer this field.
     pub lightning_provider: LightningProvider,
     pub ledger_service: LedgerService,
+    pub replay_verifier: crate::domain::verify::ReplayVerifier,
 }
 
 pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir), anyhow::Error> {
@@ -193,6 +194,7 @@ pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir), anyhow:
         lightning_service,
         lightning_provider,
         ledger_service,
+        replay_verifier: Default::default(),
         settings: config,
     };
     Ok((app_state, serve_dir))

@@ -1,11 +1,9 @@
 name: Deploy
 
-# The release workflow (release.yml) publishes each tag's GitHub release.
+# The release workflow publishes tagged archives for the cluster's nix-rollout
+# deployment. This older ARM deployment is an explicit operator action only.
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
     inputs:
       dry_run:

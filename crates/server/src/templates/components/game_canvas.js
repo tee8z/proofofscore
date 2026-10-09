@@ -461,6 +461,12 @@ async function handleGameOver(state) {
 
     // In practice mode, show a note that the score wasn't saved
     const gameOverPlays = document.getElementById("gameOverPlaysRemaining");
+    if (practiceMode) {
+        const status = document.getElementById("scoreSubmissionStatus");
+        const retry = document.getElementById("retry-score-button");
+        if (status) status.textContent = "";
+        if (retry) retry.style.display = "none";
+    }
     if (practiceMode && gameOverPlays) {
         gameOverPlays.textContent = "Practice mode — score not submitted";
         gameOverPlays.className = "nes-text is-warning";
@@ -476,32 +482,54 @@ async function handleGameOver(state) {
     if (gameOverDialog) gameOverDialog.style.display = "block";
 }
 
+// Retry only an explicit busy response: network failures and other errors can
+// be ambiguous after a write, so they must not automatically resubmit a score.
+async function postScoreWithRetry(url, payload) {
+    for (let attempt = 0; ; attempt++) {
+        const response = await window.gameAuth.post(url, payload);
+        if (response.status !== 503 || attempt >= 11) return response;
+        const seconds = Number(response.headers.get("Retry-After"));
+        const delay = Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 5) : 1;
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+    }
+}
+
 async function submitScore(score, level, gameTime, inputLog, inputHash, frames, frameTimings) {
     if (!window.gameAuth || !window.gameAuth.isLoggedIn() || !sessionId) {
         console.warn("No session ID available, cannot submit score");
         return;
     }
-    try {
-        const apiBase = window.API_BASE || document.body.getAttribute("data-api-base") || "";
-        const response = await window.gameAuth.post(`${apiBase}/api/v1/game/score`, {
-            score: score,
-            level: level,
-            play_time: gameTime,
-            session_id: sessionId,
-            input_log: inputLog,
-            input_hash: inputHash,
-            frames: frames,
-            frame_timings: frameTimings,
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            console.error("Score submission rejected:", text);
-        } else {
-            console.log("Score submitted and verified successfully");
+    // Capture the original session and log for both automatic and manual retry.
+    const payload = {
+        score, level, play_time: gameTime, session_id: sessionId,
+        input_log: inputLog, input_hash: inputHash, frames, frame_timings: frameTimings,
+    };
+    const apiBase = window.API_BASE || document.body.getAttribute("data-api-base") || "";
+    const status = document.getElementById("scoreSubmissionStatus");
+    const retry = document.getElementById("retry-score-button");
+    async function send() {
+        if (retry) retry.style.display = "none";
+        if (status) status.textContent = "Saving score…";
+        try {
+            const response = await postScoreWithRetry(`${apiBase}/api/v1/game/score`, payload);
+            if (response.ok) {
+                if (status) status.textContent = "Score saved.";
+            } else {
+                if (status) status.textContent = response.status === 503
+                    ? "Score not saved yet. Please try saving again."
+                    : "Score could not be verified.";
+                if (retry && response.status === 503) {
+                    retry.style.display = "inline-block";
+                    retry.onclick = send;
+                }
+                console.error("Score submission rejected:", await response.text());
+            }
+        } catch (error) {
+            if (status) status.textContent = "Could not confirm the save. Check the leaderboard.";
+            console.error("Failed to submit score:", error);
         }
-    } catch (error) {
-        console.error("Failed to submit score:", error);
     }
+    await send();
 }
 
 // Keyboard input

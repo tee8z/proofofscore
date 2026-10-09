@@ -837,12 +837,21 @@ fn circles_collide(x1: Fixed, y1: Fixed, r1: Fixed, x2: Fixed, y2: Fixed, r2: Fi
 /// Replay a game given seed, config, and recorded inputs.
 /// Returns (score, level, frame_count, game_over).
 pub fn replay(seed: u64, config: GameConfig, inputs: &[FrameInput]) -> (u32, u32, u32, bool) {
+    replay_iter(seed, config, inputs.iter().cloned())
+}
+
+/// Replay decoded inputs as they arrive, without retaining a frame vector.
+pub fn replay_iter(
+    seed: u64,
+    config: GameConfig,
+    inputs: impl IntoIterator<Item = FrameInput>,
+) -> (u32, u32, u32, bool) {
     let mut state = GameState::new(seed, config);
     for input in inputs {
         if state.game_over {
             break;
         }
-        state.tick(input);
+        state.tick(&input);
     }
     (state.score, state.level, state.frame, state.game_over)
 }

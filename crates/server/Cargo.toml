@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 repository = "https://github.com/tee8z/5day4cast"
 

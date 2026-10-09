@@ -43,7 +43,6 @@ use super::bot_detection::{
 };
 use super::store::GameConfigResponse;
 use super::store::ScoreMetadata;
-use super::verify::verify_replay;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use sha2::{Digest, Sha256};
 
@@ -429,6 +428,10 @@ pub async fn submit_score(
 ) -> Result<impl IntoResponse, Response> {
     let pubkey = auth.pubkey.to_string();
     info!("Score submission from pubkey: {}", pubkey);
+    let replay = state
+        .replay_verifier
+        .admit()
+        .map_err(IntoResponse::into_response)?;
 
     // Find user
     let user = match state.user_store.find_by_pubkey(pubkey).await {
@@ -485,13 +488,16 @@ pub async fn submit_score(
         })?;
 
     // Replay and verify
-    let result = verify_replay(
-        seed,
-        &engine_config,
-        &input_bytes,
-        submission.frames,
-        submission.score as u32,
-    );
+    let result = replay
+        .verify(
+            seed,
+            engine_config,
+            input_bytes.clone(),
+            submission.frames,
+            submission.score as u32,
+        )
+        .await
+        .map_err(IntoResponse::into_response)?;
 
     if !result.verified {
         error!(
