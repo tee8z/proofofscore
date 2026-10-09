@@ -850,6 +850,7 @@ mod tests {
             lightning_provider: LightningProvider::Stub,
             ledger_service: LedgerService::new(Keys::generate(), LedgerStore::new(pool)),
             replay_verifier: Default::default(),
+            password_work: Default::default(),
         }
     }
 
