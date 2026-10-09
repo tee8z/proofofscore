@@ -42,6 +42,8 @@ Uses **NIP-98 HTTP Auth** — every request is signed fresh with the user's Nost
 - **Nostr extension** — NIP-07 browser extension (Alby, nos2x, etc.)
 - **Recovery key** — paste nsec directly, optionally set a new password
 
+Password hashing and verification share two blocking workers, with no waiting queue. When both are busy, username registration, username login, and password reset receive HTTP 503 with `Retry-After: 1`. An unknown username costs the same Argon2 verification as a wrong password.
+
 ## Gameplay
 
 - **Lives**: 3 starting, max 5. Earn extra lives from boss kills.

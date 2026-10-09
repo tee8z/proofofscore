@@ -9,7 +9,7 @@ use nostr_sdk::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, sync::Arc};
 
-use super::password::{hash_password, verify_password};
+use super::password::PasswordError;
 use crate::{
     lightning::normalize_lightning_address, map_error, nostr_extractor::NostrAuth,
     startup::AppState,
@@ -166,9 +166,14 @@ pub async fn register_username(
         }
     }
 
-    let password_hash = hash_password(&payload.password).map_err(|e| {
+    // Take a worker only for the Argon2 pass, not across database waits.
+    let hashing = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
+    let password_hash = hashing.hash(payload.password).await.map_err(|e| {
         error!("Password hash error: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal error").into_response()
+        e.into_response()
     })?;
 
     match state
@@ -201,9 +206,6 @@ pub async fn login_username(
 ) -> Result<impl IntoResponse, Response> {
     info!("Username login request for: {}", payload.username);
 
-    // Timing-safe: always verify even if user not found
-    let dummy_hash = "$argon2id$v=19$m=19456,t=2,p=1$dW5rbm93bg$YWxzb191bmtub3du";
-
     let user = state
         .user_store
         .find_by_username(&payload.username)
@@ -213,18 +215,31 @@ pub async fn login_username(
             map_error(e)
         })?;
 
-    let (hash_to_verify, found_user) = match &user {
-        Some(u) => (u.password_hash.as_deref().unwrap_or(dummy_hash), true),
-        None => (dummy_hash, false),
+    // Unknown usernames still pay for one Argon2 verification. Admission comes
+    // after the lookup on both paths, so a refusal reveals nothing about the name.
+    let verification = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
+    let stored_hash = user.as_ref().and_then(|u| u.password_hash.clone());
+    let password_valid = match verification.verify(payload.password, stored_hash).await {
+        Ok(valid) => valid,
+        Err(PasswordError::VerifyError(e)) => {
+            error!(
+                "Stored password hash for {} cannot be verified: {}",
+                payload.username, e
+            );
+            false
+        }
+        Err(e) => {
+            error!("Password verification error: {}", e);
+            return Err(e.into_response());
+        }
     };
 
-    let password_valid = verify_password(&payload.password, hash_to_verify).unwrap_or(false);
-
-    if !found_user || !password_valid {
+    let (Some(user), true) = (user, password_valid) else {
         return Err((StatusCode::UNAUTHORIZED, "Invalid username or password").into_response());
-    }
-
-    let user = user.unwrap();
+    };
     let encrypted_nsec = user.encrypted_nsec.ok_or_else(|| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -268,9 +283,13 @@ pub async fn reset_password(
         return Err((StatusCode::BAD_REQUEST, msg).into_response());
     }
 
-    let password_hash = hash_password(&payload.password).map_err(|e| {
+    let hashing = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
+    let password_hash = hashing.hash(payload.password).await.map_err(|e| {
         error!("Password hash error: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal error").into_response()
+        e.into_response()
     })?;
 
     state

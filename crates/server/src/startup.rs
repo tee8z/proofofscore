@@ -48,8 +48,8 @@ use crate::{
     run_competition_task,
     secrets::get_key,
     serve_service_worker, start_new_session, submit_score, update_lightning_address, GameStore,
-    LedgerService, LedgerStore, LightningProvider, LightningService, LndClient, PaymentStore,
-    UserStore,
+    LedgerService, LedgerStore, LightningProvider, LightningService, LndClient, PasswordWork,
+    PaymentStore, UserStore,
 };
 pub struct Application {
     server: Serve<
@@ -104,6 +104,7 @@ pub struct AppState {
     pub lightning_provider: LightningProvider,
     pub ledger_service: LedgerService,
     pub replay_verifier: crate::domain::verify::ReplayVerifier,
+    pub password_work: PasswordWork,
 }
 
 pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir), anyhow::Error> {
@@ -195,6 +196,7 @@ pub async fn build_app(config: Settings) -> Result<(AppState, ServeDir), anyhow:
         lightning_provider,
         ledger_service,
         replay_verifier: Default::default(),
+        password_work: Default::default(),
         settings: config,
     };
     Ok((app_state, serve_dir))
