@@ -150,11 +150,6 @@ pub async fn register_username(
         return Err((StatusCode::BAD_REQUEST, msg).into_response());
     }
 
-    let hashing = state
-        .password_work
-        .admit()
-        .map_err(IntoResponse::into_response)?;
-
     // Convert pubkey to hex format (NostrAuth extractor uses hex, JS sends bech32)
     let nostr_pubkey = PublicKey::from_str(&payload.nostr_pubkey)
         .map(|pk| pk.to_string())
@@ -171,6 +166,11 @@ pub async fn register_username(
         }
     }
 
+    // Take a worker only for the Argon2 pass, not across database waits.
+    let hashing = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
     let password_hash = hashing.hash(payload.password).await.map_err(|e| {
         error!("Password hash error: {}", e);
         e.into_response()
@@ -205,10 +205,6 @@ pub async fn login_username(
     Json(payload): Json<UsernameLoginPayload>,
 ) -> Result<impl IntoResponse, Response> {
     info!("Username login request for: {}", payload.username);
-    let verification = state
-        .password_work
-        .admit()
-        .map_err(IntoResponse::into_response)?;
 
     let user = state
         .user_store
@@ -219,7 +215,12 @@ pub async fn login_username(
             map_error(e)
         })?;
 
-    // Unknown usernames still pay for one Argon2 verification.
+    // Unknown usernames still pay for one Argon2 verification. Admission comes
+    // after the lookup on both paths, so a refusal reveals nothing about the name.
+    let verification = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
     let stored_hash = user.as_ref().and_then(|u| u.password_hash.clone());
     let password_valid = match verification.verify(payload.password, stored_hash).await {
         Ok(valid) => valid,
@@ -271,10 +272,6 @@ pub async fn reset_password(
 ) -> Result<impl IntoResponse, Response> {
     let pubkey = auth.pubkey.to_string();
     info!("Password reset request from pubkey: {}", pubkey);
-    let hashing = state
-        .password_work
-        .admit()
-        .map_err(IntoResponse::into_response)?;
 
     let user = match state.user_store.find_by_pubkey(pubkey).await {
         Ok(Some(user)) => user,
@@ -286,6 +283,10 @@ pub async fn reset_password(
         return Err((StatusCode::BAD_REQUEST, msg).into_response());
     }
 
+    let hashing = state
+        .password_work
+        .admit()
+        .map_err(IntoResponse::into_response)?;
     let password_hash = hashing.hash(payload.password).await.map_err(|e| {
         error!("Password hash error: {}", e);
         e.into_response()
