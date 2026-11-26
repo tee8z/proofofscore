@@ -189,7 +189,8 @@ jobs:
   # End-to-end tests (reuses x86_64 build artifacts)
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Playwright cannot install Chromium on ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     needs: [build-x86_64]
     steps:
       - uses: actions/checkout@v4
